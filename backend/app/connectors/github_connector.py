@@ -50,8 +50,11 @@ async def _fetch_repo_list(client: httpx.AsyncClient, org: str, headers: dict) -
             json={"query": LIST_QUERY, "variables": {"org": org, "cursor": cursor}},
             headers=headers,
         )
-        resp.raise_for_status()
-        page = resp.json()["data"]["organization"]["repositories"]
+        data = _graphql_data(resp)
+        organization = data.get("organization")
+        if organization is None:
+            raise RuntimeError(f"GitHub organization '{org}' not found or not accessible with this token")
+        page = organization["repositories"]
         repos.extend(page["nodes"])
         if not page["pageInfo"]["hasNextPage"]:
             break
@@ -64,6 +67,17 @@ def _batched(items: list, size: int):
         yield items[i : i + size]
 
 
+def _graphql_data(resp: httpx.Response) -> dict:
+    resp.raise_for_status()
+    body = resp.json()
+    if body.get("errors"):
+        messages = "; ".join(err.get("message", str(err)) for err in body["errors"])
+        raise RuntimeError(f"GitHub GraphQL API returned errors: {messages}")
+    if body.get("data") is None:
+        raise RuntimeError("GitHub GraphQL API returned no data and no errors")
+    return body["data"]
+
+
 async def fetch_repos(client: httpx.AsyncClient, org: str, token: str) -> list[GitHubRepoData]:
     headers = {"Authorization": f"Bearer {token}"}
     repo_list = await _fetch_repo_list(client, org, headers)
@@ -72,8 +86,7 @@ async def fetch_repos(client: httpx.AsyncClient, org: str, token: str) -> list[G
     for batch in _batched(repo_list, 100):
         names = [r["name"] for r in batch]
         resp = await client.post(GRAPHQL_URL, json={"query": _checks_query(names, org)}, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()["data"]
+        data = _graphql_data(resp)
         for i, repo in enumerate(batch):
             check = data[f"r{i}"]
             protection_nodes = (check.get("branchProtectionRules") or {}).get("nodes") or []

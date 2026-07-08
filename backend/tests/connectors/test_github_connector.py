@@ -68,6 +68,28 @@ async def test_fetch_repos_combines_list_and_checks():
 
 
 @pytest.mark.asyncio
+async def test_fetch_repos_raises_clear_error_when_graphql_returns_errors():
+    graphql_error_response = {
+        "data": {"organization": None},
+        "errors": [
+            {
+                "type": "NOT_FOUND",
+                "path": ["organization"],
+                "message": "Could not resolve to an Organization with the login of 'wrong-org'.",
+            }
+        ],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=graphql_error_response)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as client:
+        with pytest.raises(RuntimeError, match="Could not resolve to an Organization with the login of 'wrong-org'"):
+            await fetch_repos(client, org="wrong-org", token="gh-token")
+
+
+@pytest.mark.asyncio
 async def test_fetch_repos_sends_bearer_token():
     seen_headers = {}
 
