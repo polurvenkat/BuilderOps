@@ -68,22 +68,18 @@ function EmptyColumn({ code, title, color, message }: { code: string; title: str
 }
 
 export function StationBoard({ repos }: { repos: RepoOut[] }) {
-  // Only onboarded/standardized are real columns today because the backend never produces any
-  // other current_stage value; repos with any other stage are intentionally not shown on the
-  // board in this phase — a future phase adding a new stage must also update this component.
+  // Onboarded/Standardized/Piped are real columns because the backend can produce those
+  // current_stage values. Tested/Paved road remain empty placeholders until their own
+  // connectors ship — a future phase adding a new stage must also update this component.
   const onboarded = repos.filter((r) => r.current_stage === "onboarded");
   const standardized = repos.filter((r) => r.current_stage === "standardized");
+  const piped = repos.filter((r) => r.current_stage === "piped");
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-3 mb-5">
       <RealColumn code="ON" title="Onboarded" color="#A79AE8" stageKey="onboarded" repos={onboarded} />
       <RealColumn code="ST" title="Standardized" color="#A79AE8" stageKey="standardized" repos={standardized} />
-      <EmptyColumn
-        code="PI"
-        title="Piped"
-        color="#3FBBA0"
-        message="Not live yet — unlocks once the CI/CD connector ships."
-      />
+      <RealColumn code="PI" title="Piped" color="#3FBBA0" stageKey="piped" repos={piped} />
       <EmptyColumn
         code="TS"
         title="Tested"

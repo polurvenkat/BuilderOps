@@ -7,4 +7,5 @@ export function formatDwell(days: number | null): string {
 export const STAGE_LABELS: Record<string, string> = {
   onboarded: "Onboarded",
   standardized: "Standardized",
+  piped: "Piped",
 };
