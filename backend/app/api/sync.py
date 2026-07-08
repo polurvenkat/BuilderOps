@@ -32,7 +32,7 @@ def sync_status(session: Session = Depends(get_db)):
 @router.post("/github", response_model=SyncRunOut, status_code=200)
 async def trigger_github_sync(request: Request, session: Session = Depends(get_db)):
     settings = request.app.state.settings
-    async with httpx.AsyncClient(base_url="https://api.github.com") as client:
+    async with httpx.AsyncClient(base_url="https://api.github.com", timeout=30.0) as client:
         return await run_github_sync(
             session, client, org=settings.github_org, token=settings.github_token, now=datetime.now(timezone.utc)
         )
@@ -44,7 +44,7 @@ async def trigger_github_sync(request: Request, session: Session = Depends(get_d
 @router.post("/ado", response_model=SyncRunOut, status_code=200)
 async def trigger_ado_sync(request: Request, session: Session = Depends(get_db)):
     settings = request.app.state.settings
-    async with httpx.AsyncClient(base_url=f"https://dev.azure.com/{settings.ado_org}") as client:
+    async with httpx.AsyncClient(base_url=f"https://dev.azure.com/{settings.ado_org}", timeout=30.0) as client:
         return await run_ado_sync(
             session, client, org=settings.ado_org, project=settings.ado_project, pat=settings.ado_pat,
             now=datetime.now(timezone.utc),

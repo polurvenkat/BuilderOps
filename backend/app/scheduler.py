@@ -13,7 +13,7 @@ def _run_github_sync_job(app: FastAPI):
     session = app.state.sessionmaker()
 
     async def _go():
-        async with httpx.AsyncClient(base_url="https://api.github.com") as client:
+        async with httpx.AsyncClient(base_url="https://api.github.com", timeout=30.0) as client:
             await run_github_sync(
                 session, client, org=settings.github_org, token=settings.github_token,
                 now=datetime.now(timezone.utc),
@@ -30,7 +30,7 @@ def _run_ado_sync_job(app: FastAPI):
     session = app.state.sessionmaker()
 
     async def _go():
-        async with httpx.AsyncClient(base_url=f"https://dev.azure.com/{settings.ado_org}") as client:
+        async with httpx.AsyncClient(base_url=f"https://dev.azure.com/{settings.ado_org}", timeout=30.0) as client:
             await run_ado_sync(
                 session, client, org=settings.ado_org, project=settings.ado_project, pat=settings.ado_pat,
                 now=datetime.now(timezone.utc),

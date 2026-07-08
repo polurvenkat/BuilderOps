@@ -59,3 +59,39 @@ def test_post_sync_github_triggers_a_run(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["status"] == "success"
+
+
+def test_post_sync_github_uses_a_generous_timeout(monkeypatch):
+    app = create_app(make_test_settings())
+    captured_clients = []
+
+    async def fake_run_github_sync(session, client, org, token, now):
+        captured_clients.append(client)
+        return SyncRun(id=1, connector="github", started_at=now, status="success", finished_at=now)
+
+    monkeypatch.setattr("app.api.sync.run_github_sync", fake_run_github_sync)
+
+    client = TestClient(app)
+    client.post("/sync/github")
+
+    assert len(captured_clients) == 1
+    # A real 100-repo batched GraphQL checks query takes ~9-10s against GitHub's API;
+    # httpx's 5s default timeout is not enough. Guard against regressing to the default.
+    assert captured_clients[0].timeout.read >= 30.0
+
+
+def test_post_sync_ado_uses_a_generous_timeout(monkeypatch):
+    app = create_app(make_test_settings())
+    captured_clients = []
+
+    async def fake_run_ado_sync(session, client, org, project, pat, now):
+        captured_clients.append(client)
+        return SyncRun(id=2, connector="ado", started_at=now, status="success", finished_at=now)
+
+    monkeypatch.setattr("app.api.sync.run_ado_sync", fake_run_ado_sync)
+
+    client = TestClient(app)
+    client.post("/sync/ado")
+
+    assert len(captured_clients) == 1
+    assert captured_clients[0].timeout.read >= 30.0

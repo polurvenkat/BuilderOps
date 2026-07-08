@@ -1,6 +1,6 @@
 from app.config import Settings
 from app.main import create_app
-from app.scheduler import start_scheduler
+from app.scheduler import _run_github_sync_job, start_scheduler
 
 
 def make_test_settings():
@@ -32,3 +32,20 @@ def test_start_scheduler_github_job_runs_every_4_hours():
     github_job = scheduler.get_job("github_sync")
     assert github_job.trigger.interval.total_seconds() == 4 * 60 * 60
     scheduler.shutdown(wait=False)
+
+
+def test_github_sync_job_uses_a_generous_timeout(monkeypatch):
+    app = create_app(make_test_settings())
+    captured_clients = []
+
+    async def fake_run_github_sync(session, client, org, token, now):
+        captured_clients.append(client)
+
+    monkeypatch.setattr("app.scheduler.run_github_sync", fake_run_github_sync)
+
+    _run_github_sync_job(app)
+
+    assert len(captured_clients) == 1
+    # A real 100-repo batched GraphQL checks query takes ~9-10s against GitHub's API;
+    # httpx's 5s default timeout is not enough. Guard against regressing to the default.
+    assert captured_clients[0].timeout.read >= 30.0
