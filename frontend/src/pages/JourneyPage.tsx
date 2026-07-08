@@ -4,6 +4,7 @@ import { useRepo } from "../hooks/useRepo";
 import { ConvergenceDiagram } from "../components/journey/ConvergenceDiagram";
 import { StationCard } from "../components/journey/StationCard";
 import { RepoFieldsForm } from "../components/journey/RepoFieldsForm";
+import { OnboardingLog } from "../components/journey/OnboardingLog";
 import type { RepoOut } from "../api/types";
 
 const STANDARDIZED_KEYS = ["codeowners_assigned", "domain_assigned", "branch_protection", "readme_present"];
@@ -129,6 +130,7 @@ export function JourneyPage() {
 
       <div className="mt-8">
         <RepoFieldsForm repo={repo} onUpdated={setRepo} />
+        <OnboardingLog repoId={repo.id} />
       </div>
     </div>
   );

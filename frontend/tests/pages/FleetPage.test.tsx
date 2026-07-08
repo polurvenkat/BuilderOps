@@ -111,6 +111,9 @@ describe("FleetPage", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string) => {
+        if (url.includes("/onboarding-log")) {
+          return Promise.resolve({ ok: true, json: async () => ({ entries: [], median_hours: null }) });
+        }
         if (url.includes("/repos/7")) {
           return Promise.resolve({ ok: true, json: async () => repo });
         }

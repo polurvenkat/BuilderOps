@@ -42,7 +42,11 @@ function renderAtRepo(id: string) {
 
 describe("JourneyPage", () => {
   it("shows a loading state, then the repo's name and stuck reason once loaded", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => STUCK_REPO }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => STUCK_REPO })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [], median_hours: null }) });
+    vi.stubGlobal("fetch", fetchMock);
 
     renderAtRepo("1");
 
@@ -51,7 +55,11 @@ describe("JourneyPage", () => {
   });
 
   it("always renders Piped/Tested/Paved Road as Locked regardless of data", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => STUCK_REPO }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => STUCK_REPO })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [], median_hours: null }) });
+    vi.stubGlobal("fetch", fetchMock);
 
     renderAtRepo("1");
 
@@ -61,7 +69,11 @@ describe("JourneyPage", () => {
   });
 
   it("shows an error state when the fetch fails", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [], median_hours: null }) });
+    vi.stubGlobal("fetch", fetchMock);
 
     renderAtRepo("999");
 
@@ -77,7 +89,11 @@ describe("JourneyPage", () => {
         branch_protection: { status: "fail", source: "auto", detail: null, updated_at: "2026-07-03T00:00:00Z" },
       },
     };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => repo }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => repo })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [], median_hours: null }) });
+    vi.stubGlobal("fetch", fetchMock);
 
     renderAtRepo("1");
 
