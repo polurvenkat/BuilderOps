@@ -424,3 +424,24 @@ def test_get_pipeline_status_502_when_ado_call_fails(monkeypatch):
     response = client.get(f"/repos/{repo_id}/pipeline-status")
 
     assert response.status_code == 502
+
+
+def test_repo_out_exposes_dockerize_eligible():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    client.patch(f"/repos/{repo_id}", json={"dockerize_eligible": True})
+    body = client.get(f"/repos/{repo_id}").json()
+
+    assert body["dockerize_eligible"] is True
+
+
+def test_repo_out_dockerize_eligible_defaults_to_none():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    body = client.get(f"/repos/{repo_id}").json()
+
+    assert body["dockerize_eligible"] is None

@@ -21,6 +21,7 @@ class RepoOut(BaseModel):
     migration_wave: str
     github_url: str
     last_synced_at: datetime | None
+    dockerize_eligible: bool | None
     stages: dict[str, StageCheckOut]
     current_stage: str
     is_stuck: bool
