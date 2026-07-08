@@ -12,6 +12,11 @@ from app.services.sync_service import run_ado_sync, run_github_sync
 NOW = datetime(2026, 7, 7, tzinfo=timezone.utc)
 
 
+def _naive(dt):
+    """Strip tzinfo from datetime for SQLite round-trip tolerance."""
+    return dt.replace(tzinfo=None) if dt is not None and dt.tzinfo is not None else dt
+
+
 @pytest.fixture
 def session() -> Session:
     engine = get_engine("sqlite:///:memory:")
@@ -40,7 +45,7 @@ async def test_run_github_sync_creates_repo_and_readiness_checks(session):
 
     assert sync_run.status == "success"
     repo = session.query(Repo).filter_by(name="checkout-web").one()
-    assert repo.last_synced_at == NOW
+    assert _naive(repo.last_synced_at) == _naive(NOW)
     checks = session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()
     assert {c.stage_key for c in checks} == {
         "migrated_from_ado", "codeowners_assigned", "readme_present", "branch_protection", "naming_standardized",
