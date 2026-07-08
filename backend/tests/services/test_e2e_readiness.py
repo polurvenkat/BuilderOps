@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from app.connectors.ado_test_plans_connector import TestPlanRunResult
-from app.services.test_readiness import compute_e2e_readiness_checks
+from app.services.e2e_readiness import compute_e2e_readiness_checks
 
 NOW = datetime(2026, 7, 8, tzinfo=timezone.utc)
 

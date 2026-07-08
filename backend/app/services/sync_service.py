@@ -11,7 +11,7 @@ from app.models import AdoRepoSnapshot, PipelineLink, Repo, SyncRun
 from app.services.readiness import compute_readiness_checks
 from app.services.readiness_pipeline import compute_pipeline_readiness_checks
 from app.services.readiness_store import upsert_readiness_check
-from app.services.test_readiness import compute_e2e_readiness_checks
+from app.services.e2e_readiness import compute_e2e_readiness_checks
 
 
 def _parse_iso_datetime(iso_string: str | None) -> datetime | None:
