@@ -5,19 +5,31 @@ from sqlalchemy.orm import Session
 
 from app.main import get_db
 from app.models import OnboardingLog, ReadinessCheck, Repo
-from app.schemas import OnboardingLogIn, OnboardingLogOut, RepoOut, RepoPatchIn
+from app.schemas import OnboardingLogIn, OnboardingLogOut, RepoOut, RepoPatchIn, StageCheckOut
 
 router = APIRouter(prefix="/repos", tags=["repos"])
 
 
 def _to_repo_out(repo: Repo, session: Session) -> RepoOut:
     checks = session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()
+    stages = {
+        c.stage_key: StageCheckOut(status=c.status, source=c.source, detail=c.detail, updated_at=c.updated_at)
+        for c in checks
+    }
+    # domain_assigned is manual-only (set via PATCH) and never gets a ReadinessCheck row,
+    # so it must be synthesized directly from repo.domain to appear in the API response.
+    stages["domain_assigned"] = StageCheckOut(
+        status="pass" if repo.domain else "fail",
+        source="manual",
+        detail=None,
+        updated_at=None,
+    )
     return RepoOut(
         id=repo.id,
         name=repo.name,
         domain=repo.domain,
         migration_wave=repo.migration_wave,
-        stages={c.stage_key: c.status for c in checks},
+        stages=stages,
     )
 
 

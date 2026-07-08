@@ -65,7 +65,6 @@ async def test_fetch_repos_combines_list_and_checks():
         branch_protection_enabled=False,
         required_reviewer_count=0,
     )
-    assert any("Authorization" in c or True for c in calls)  # calls captured, auth checked via header assertion below
 
 
 @pytest.mark.asyncio

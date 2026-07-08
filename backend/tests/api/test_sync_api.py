@@ -57,5 +57,5 @@ def test_post_sync_github_triggers_a_run(monkeypatch):
     client = TestClient(app)
     response = client.post("/sync/github")
 
-    assert response.status_code == 202
+    assert response.status_code == 200
     assert response.json()["status"] == "success"

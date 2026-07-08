@@ -1,6 +1,16 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
+
+
+class StageCheckOut(BaseModel):
+    status: str
+    source: str
+    detail: dict | None
+    updated_at: datetime | None
+
+    model_config = {"from_attributes": True}
 
 
 class RepoOut(BaseModel):
@@ -8,14 +18,14 @@ class RepoOut(BaseModel):
     name: str
     domain: str | None
     migration_wave: str
-    stages: dict[str, str]
+    stages: dict[str, StageCheckOut]
 
     model_config = {"from_attributes": True}
 
 
 class RepoPatchIn(BaseModel):
     domain: str | None = None
-    migration_wave: str | None = None
+    migration_wave: Literal["not_started", "pilot", "rolling_out", "migrated"] | None = None
 
 
 class OnboardingLogIn(BaseModel):

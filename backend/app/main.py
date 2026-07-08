@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.db import Base, get_engine, get_sessionmaker
 from app.scheduler import start_scheduler
+from app import models  # noqa: F401 - ensures all models are registered on Base.metadata before create_all
 
 
 def get_db(request: Request):

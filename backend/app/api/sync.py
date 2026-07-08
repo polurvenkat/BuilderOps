@@ -26,7 +26,10 @@ def sync_status(session: Session = Depends(get_db)):
     return result
 
 
-@router.post("/github", response_model=SyncRunOut, status_code=202)
+# Runs synchronously within the request (deliberate v1 simplification - no background-task
+# infrastructure yet). Revisit with a background task if org size makes this slow enough to
+# risk a gateway timeout.
+@router.post("/github", response_model=SyncRunOut, status_code=200)
 async def trigger_github_sync(request: Request, session: Session = Depends(get_db)):
     settings = request.app.state.settings
     async with httpx.AsyncClient(base_url="https://api.github.com") as client:
@@ -35,7 +38,10 @@ async def trigger_github_sync(request: Request, session: Session = Depends(get_d
         )
 
 
-@router.post("/ado", response_model=SyncRunOut, status_code=202)
+# Runs synchronously within the request (deliberate v1 simplification - no background-task
+# infrastructure yet). Revisit with a background task if org size makes this slow enough to
+# risk a gateway timeout.
+@router.post("/ado", response_model=SyncRunOut, status_code=200)
 async def trigger_ado_sync(request: Request, session: Session = Depends(get_db)):
     settings = request.app.state.settings
     async with httpx.AsyncClient(base_url=f"https://dev.azure.com/{settings.ado_org}") as client:

@@ -43,7 +43,39 @@ def test_list_repos_returns_stage_map():
     body = response.json()
     assert len(body) == 1
     assert body[0]["name"] == "checkout-web"
-    assert body[0]["stages"]["codeowners_assigned"] == "pass"
+    assert body[0]["stages"]["codeowners_assigned"]["status"] == "pass"
+    assert body[0]["stages"]["codeowners_assigned"]["source"] == "auto"
+
+
+def test_domain_assigned_reflects_repo_domain():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)  # seeded with domain="Growth"
+    client = TestClient(app)
+
+    response = client.get(f"/repos/{repo_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stages"]["domain_assigned"]["status"] == "pass"
+    assert body["stages"]["domain_assigned"]["source"] == "manual"
+
+
+def test_domain_assigned_fails_when_domain_missing():
+    app = create_app(make_test_settings())
+    session = app.state.sessionmaker()
+    repo = Repo(name="no-domain-repo", github_url="https://github.com/acme-org/no-domain-repo", domain=None)
+    session.add(repo)
+    session.commit()
+    repo_id = repo.id
+    session.close()
+    client = TestClient(app)
+
+    response = client.get(f"/repos/{repo_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stages"]["domain_assigned"]["status"] == "fail"
+    assert body["stages"]["domain_assigned"]["source"] == "manual"
 
 
 def test_get_single_repo_404_when_missing():
@@ -66,6 +98,16 @@ def test_patch_repo_updates_manual_fields_only():
     body = response.json()
     assert body["domain"] == "Checkout"
     assert body["migration_wave"] == "pilot"
+
+
+def test_patch_repo_rejects_invalid_migration_wave():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    response = client.patch(f"/repos/{repo_id}", json={"migration_wave": "bogus"})
+
+    assert response.status_code == 422
 
 
 def test_post_onboarding_log_creates_entry():
