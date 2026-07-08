@@ -11,6 +11,11 @@ const CHECK_COLUMNS = [
   "branch_protection",
   "readme_present",
   "naming_standardized",
+  "pipeline_linked",
+  "pipeline_is_yaml",
+  "environment_gates_configured",
+  "dockerized",
+  "deployed_aca",
 ];
 
 function checkIcon(status: string | undefined): string {
