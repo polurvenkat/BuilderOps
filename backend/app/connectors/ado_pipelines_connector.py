@@ -53,3 +53,28 @@ async def fetch_release_definitions(
     resp.raise_for_status()
     body = resp.json()
     return [ReleaseDefinitionData(definition_id=item["id"], name=item["name"]) for item in body["value"]]
+
+
+async def fetch_environment_checks(
+    client: httpx.AsyncClient, org: str, project: str, pat: str, environment_names: list[str]
+) -> dict[str, bool]:
+    headers = {"Authorization": _basic_auth_header(pat)}
+    resp = await client.get(
+        f"/{project}/_apis/pipelines/environments", params={"api-version": "7.1-preview.1"}, headers=headers,
+    )
+    resp.raise_for_status()
+    environments = resp.json()["value"]
+
+    result: dict[str, bool] = {}
+    for target_name in environment_names:
+        match = next((e for e in environments if target_name.lower() in e["name"].lower()), None)
+        if match is None:
+            continue
+        checks_resp = await client.get(
+            f"/{project}/_apis/pipelines/checks/configurations",
+            params={"api-version": "7.1-preview.1", "resourceType": "environment", "resourceId": match["id"]},
+            headers=headers,
+        )
+        checks_resp.raise_for_status()
+        result[target_name] = len(checks_resp.json()["value"]) > 0
+    return result

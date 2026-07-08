@@ -6,6 +6,7 @@ from app.connectors.ado_pipelines_connector import (
     ReleaseDefinitionData,
     fetch_pipeline_links,
     fetch_release_definitions,
+    fetch_environment_checks,
 )
 
 PIPELINES_LIST_RESPONSE = {"value": [{"id": 7, "name": "checkout-web-ci"}]}
@@ -70,3 +71,52 @@ async def test_fetch_release_definitions_parses_list():
         defs = await fetch_release_definitions(client, org="acme-ado", project="acme-project", pat="ado-pat")
 
     assert defs == [ReleaseDefinitionData(definition_id=3, name="legacy-batch-classic-release")]
+
+
+ENVIRONMENTS_RESPONSE = {
+    "value": [
+        {"id": 10, "name": "Dev Deployment"},
+        {"id": 11, "name": "QA Deployment"},
+        {"id": 12, "name": "UAT Deployment"},
+        {"id": 13, "name": "Prod Deployment"},
+    ]
+}
+
+
+@pytest.mark.asyncio
+async def test_fetch_environment_checks_reports_configured_gates():
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = str(request.url.path)
+        if path.endswith("/_apis/pipelines/environments"):
+            return httpx.Response(200, json=ENVIRONMENTS_RESPONSE)
+        env_id = int(request.url.params["resourceId"])
+        has_check = env_id in (12, 13)  # UAT and Prod are gated; Dev and QA are not
+        return httpx.Response(200, json={"value": [{"id": 1}] if has_check else []})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
+        gates = await fetch_environment_checks(
+            client, org="acme-ado", project="acme-project", pat="ado-pat",
+            environment_names=["dev", "qa", "uat", "prod"],
+        )
+
+    assert gates == {"dev": False, "qa": False, "uat": True, "prod": True}
+
+
+@pytest.mark.asyncio
+async def test_fetch_environment_checks_omits_unmatched_environment_names():
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = str(request.url.path)
+        if path.endswith("/_apis/pipelines/environments"):
+            return httpx.Response(200, json={"value": [{"id": 12, "name": "UAT Deployment"}]})
+        return httpx.Response(200, json={"value": [{"id": 1}]})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
+        gates = await fetch_environment_checks(
+            client, org="acme-ado", project="acme-project", pat="ado-pat",
+            environment_names=["dev", "qa", "uat", "prod"],
+        )
+
+    assert gates == {"uat": True}
+    assert "dev" not in gates and "qa" not in gates and "prod" not in gates
