@@ -8,7 +8,7 @@ from app.connectors.ado_connector import AdoRepoData
 from app.connectors.ado_pipelines_connector import fetch_pipeline_links  # noqa: F401 - imported for readability of intent
 from app.db import Base, get_engine, get_sessionmaker
 from app.models import AdoRepoSnapshot, PipelineLink, Repo, ReadinessCheck, SyncRun
-from app.services.sync_service import run_ado_pipelines_sync, run_ado_sync, run_github_sync
+from app.services.sync_service import run_ado_pipelines_sync, run_ado_sync, run_github_sync, run_test_plans_sync
 
 NOW = datetime(2026, 7, 7, tzinfo=timezone.utc)
 
@@ -271,3 +271,91 @@ async def test_run_ado_pipelines_sync_matches_repo_url_despite_trivial_formattin
     repo = session.query(Repo).filter_by(name="checkout-web").one()
     checks = {c.stage_key: c for c in session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()}
     assert checks["pipeline_linked"].status == "pass"
+
+
+TEST_RUNS_RESPONSE = {"value": [
+    {"id": 500, "state": "Completed", "completedDate": "2026-07-01T00:00:00Z", "totalTests": 20, "passedTests": 20},
+]}
+
+
+def _test_plans_handler(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(200, json=TEST_RUNS_RESPONSE)
+
+
+@pytest.mark.asyncio
+async def test_run_test_plans_sync_computes_e2e_covered_for_mapped_repo(session):
+    session.add(Repo(
+        name="checkout-web", github_url="https://github.com/acme-org/checkout-web", e2e_test_plan_id=42,
+    ))
+    session.commit()
+
+    transport = httpx.MockTransport(_test_plans_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
+        sync_run = await run_test_plans_sync(
+            session, client, org="acme-ado", project="acme-project", pat="ado-pat", now=NOW,
+        )
+
+    assert sync_run.status == "success"
+    repo = session.query(Repo).filter_by(name="checkout-web").one()
+    checks = {c.stage_key: c for c in session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()}
+    assert checks["e2e_covered"].status == "pass"
+    assert checks["unit_tested"].status == "pending_convention"
+    assert checks["integration_tested"].status == "pending_convention"
+    assert checks["load_tested"].status == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_run_test_plans_sync_skips_connector_call_for_unmapped_repo(session):
+    session.add(Repo(name="no-e2e-repo", github_url="https://github.com/acme-org/no-e2e-repo"))
+    session.commit()
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json=TEST_RUNS_RESPONSE)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
+        await run_test_plans_sync(session, client, org="acme-ado", project="acme-project", pat="ado-pat", now=NOW)
+
+    assert len(calls) == 0
+    repo = session.query(Repo).filter_by(name="no-e2e-repo").one()
+    checks = {c.stage_key: c for c in session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()}
+    assert checks["e2e_covered"].status == "pending_convention"
+
+
+@pytest.mark.asyncio
+async def test_run_test_plans_sync_records_failure_on_connector_error(session):
+    def failing_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="boom")
+
+    session.add(Repo(
+        name="checkout-web", github_url="https://github.com/acme-org/checkout-web", e2e_test_plan_id=42,
+    ))
+    session.commit()
+
+    transport = httpx.MockTransport(failing_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
+        sync_run = await run_test_plans_sync(
+            session, client, org="acme-ado", project="acme-project", pat="ado-pat", now=NOW,
+        )
+
+    assert sync_run.status == "failed"
+    assert "500" in sync_run.error or "boom" in sync_run.error
+
+
+@pytest.mark.asyncio
+async def test_run_test_plans_sync_is_idempotent_on_rerun(session):
+    session.add(Repo(
+        name="checkout-web", github_url="https://github.com/acme-org/checkout-web", e2e_test_plan_id=42,
+    ))
+    session.commit()
+
+    transport = httpx.MockTransport(_test_plans_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
+        await run_test_plans_sync(session, client, org="acme-ado", project="acme-project", pat="ado-pat", now=NOW)
+        await run_test_plans_sync(session, client, org="acme-ado", project="acme-project", pat="ado-pat", now=NOW)
+
+    repo = session.query(Repo).filter_by(name="checkout-web").one()
+    assert session.query(ReadinessCheck).filter_by(repo_id=repo.id).count() == 4

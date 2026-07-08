@@ -5,11 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.connectors.ado_connector import fetch_ado_repos
 from app.connectors.ado_pipelines_connector import fetch_environment_checks, fetch_pipeline_links, fetch_release_definitions
+from app.connectors.ado_test_plans_connector import fetch_test_plan_latest_run
 from app.connectors.github_connector import fetch_repos
 from app.models import AdoRepoSnapshot, PipelineLink, Repo, SyncRun
 from app.services.readiness import compute_readiness_checks
 from app.services.readiness_pipeline import compute_pipeline_readiness_checks
 from app.services.readiness_store import upsert_readiness_check
+from app.services.test_readiness import compute_e2e_readiness_checks
 
 
 def _parse_iso_datetime(iso_string: str | None) -> datetime | None:
@@ -164,6 +166,38 @@ async def run_ado_pipelines_sync(
                 environment_gates=environment_gates,
                 now=now,
             ):
+                upsert_readiness_check(session, check)
+
+        sync_run.status = "success"
+        sync_run.finished_at = now
+        session.commit()
+    except Exception as exc:  # noqa: BLE001 - deliberately broad: record any failure on the SyncRun
+        session.rollback()
+        sync_run.status = "failed"
+        sync_run.error = str(exc)
+        sync_run.finished_at = now
+        session.add(sync_run)
+        session.commit()
+
+    return sync_run
+
+
+async def run_test_plans_sync(
+    session: Session, client: httpx.AsyncClient, org: str, project: str, pat: str, now: datetime
+) -> SyncRun:
+    sync_run = SyncRun(connector="test_plans", started_at=now, status="running")
+    session.add(sync_run)
+    session.commit()
+
+    try:
+        for repo in session.query(Repo).all():
+            latest_run = None
+            if repo.e2e_test_plan_id is not None:
+                latest_run = await fetch_test_plan_latest_run(
+                    client, org=org, project=project, pat=pat, test_plan_id=repo.e2e_test_plan_id,
+                )
+
+            for check in compute_e2e_readiness_checks(repo.id, repo.e2e_test_plan_id, latest_run, now):
                 upsert_readiness_check(session, check)
 
         sync_run.status = "success"
