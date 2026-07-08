@@ -19,6 +19,7 @@ class Repo(Base):
     domain: Mapped[str | None] = mapped_column(String, nullable=True)
     team: Mapped[str | None] = mapped_column(String, nullable=True)
     migration_wave: Mapped[str] = mapped_column(String, nullable=False, default="not_started")
+    dockerize_eligible: Mapped[bool | None] = mapped_column(nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -33,6 +34,17 @@ class ReadinessCheck(Base):
     detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     status_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class PipelineLink(Base):
+    __tablename__ = "pipeline_links"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("repos.id"), unique=True, nullable=False)
+    ado_pipeline_id: Mapped[int] = mapped_column(nullable=False)
+    ado_pipeline_name: Mapped[str] = mapped_column(String, nullable=False)
+    is_yaml: Mapped[bool] = mapped_column(nullable=False)
+    last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class AdoRepoSnapshot(Base):

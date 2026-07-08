@@ -15,13 +15,66 @@ def passing_standardized_checks(now=NOW):
     }
 
 
-def test_fully_passing_repo_clamps_at_standardized_and_is_not_stuck():
-    info = derive_stage_info(passing_standardized_checks(), team="Growth", now=NOW)
+def passing_piped_checks(now=NOW):
+    checks = passing_standardized_checks(now)
+    checks.update({
+        "pipeline_linked": CheckStatus(status="pass", status_changed_at=now),
+        "pipeline_is_yaml": CheckStatus(status="pass", status_changed_at=now),
+        "environment_gates_configured": CheckStatus(status="pass", status_changed_at=now),
+        "dockerized": CheckStatus(status="pass", status_changed_at=now),
+    })
+    return checks
 
-    assert info.current_stage == "standardized"
+
+def test_fully_passing_repo_including_piped_clamps_at_piped_and_is_not_stuck():
+    info = derive_stage_info(passing_piped_checks(), team="Growth", now=NOW)
+
+    assert info.current_stage == "piped"
     assert info.is_stuck is False
     assert info.dwell_days is None
     assert info.stuck_reason is None
+
+
+def test_standardized_repo_with_no_piped_data_yet_shows_stuck_at_piped():
+    checks = passing_standardized_checks()  # no piped keys present at all
+
+    info = derive_stage_info(checks, team=None, now=NOW)
+
+    assert info.current_stage == "piped"
+    assert info.is_stuck is True
+    assert info.stuck_reason == "No pipeline linked in Azure DevOps — waiting on repo owner"
+
+
+def test_repo_stuck_at_piped_uses_oldest_failing_check():
+    checks = passing_piped_checks()
+    checks["pipeline_is_yaml"] = CheckStatus(status="fail", status_changed_at=NOW - timedelta(days=15))
+    checks["dockerized"] = CheckStatus(status="fail", status_changed_at=NOW - timedelta(days=2))
+
+    info = derive_stage_info(checks, team="Luke", now=NOW)
+
+    assert info.current_stage == "piped"
+    assert info.dwell_days == 15
+    assert info.stuck_reason == "Pipeline hasn't migrated to YAML — waiting on Luke team"
+
+
+def test_environment_gates_unknown_does_not_block_piped_progression():
+    checks = passing_piped_checks()
+    checks["environment_gates_configured"] = CheckStatus(status="unknown", status_changed_at=NOW)
+
+    info = derive_stage_info(checks, team=None, now=NOW)
+
+    assert info.current_stage == "piped"
+    assert info.is_stuck is False
+
+
+def test_deployed_aca_unknown_never_blocks_progression():
+    checks = passing_piped_checks()
+    checks["deployed_aca"] = CheckStatus(status="unknown", status_changed_at=NOW)
+
+    info = derive_stage_info(checks, team=None, now=NOW)
+
+    assert info.current_stage == "piped"
+    assert info.is_stuck is False
 
 
 def test_repo_stuck_at_onboarded_reports_that_stage():
@@ -61,12 +114,12 @@ def test_onboarded_failure_takes_priority_over_standardized_failure():
 
 
 def test_naming_standardized_never_blocks_progression():
-    checks = passing_standardized_checks()
+    checks = passing_piped_checks()
     checks["naming_standardized"] = CheckStatus(status="pending_convention", status_changed_at=NOW)
 
     info = derive_stage_info(checks, team=None, now=NOW)
 
-    assert info.current_stage == "standardized"
+    assert info.current_stage == "piped"
     assert info.is_stuck is False
 
 

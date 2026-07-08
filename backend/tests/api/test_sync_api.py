@@ -27,7 +27,7 @@ def test_sync_status_returns_null_when_nothing_has_run():
     response = client.get("/sync/status")
 
     assert response.status_code == 200
-    assert response.json() == {"github": None, "ado": None}
+    assert response.json() == {"github": None, "ado": None, "ado_pipelines": None}
 
 
 def test_sync_status_returns_latest_run_per_connector():
@@ -95,3 +95,18 @@ def test_post_sync_ado_uses_a_generous_timeout(monkeypatch):
 
     assert len(captured_clients) == 1
     assert captured_clients[0].timeout.read >= 30.0
+
+
+def test_post_sync_ado_pipelines_triggers_a_run(monkeypatch):
+    app = create_app(make_test_settings())
+
+    async def fake_run_ado_pipelines_sync(session, pipelines_client, release_client, org, project, pat, now):
+        return SyncRun(id=1, connector="ado_pipelines", started_at=now, status="success", finished_at=now)
+
+    monkeypatch.setattr("app.api.sync.run_ado_pipelines_sync", fake_run_ado_pipelines_sync)
+
+    client = TestClient(app)
+    response = client.post("/sync/ado-pipelines")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"

@@ -11,6 +11,7 @@ class GitHubRepoData:
     url: str
     has_readme: bool
     has_codeowners: bool
+    dockerfile_present: bool
     branch_protection_enabled: bool
     required_reviewer_count: int
 
@@ -34,6 +35,7 @@ def _checks_query(repo_names: list[str], org: str) -> str:
         r{i}: repository(owner: "{org}", name: "{name}") {{
           readme: object(expression: "HEAD:README.md") {{ id }}
           codeowners: object(expression: "HEAD:.github/CODEOWNERS") {{ id }}
+          dockerfile: object(expression: "HEAD:Dockerfile") {{ id }}
           branchProtectionRules(first: 10) {{
             nodes {{ pattern requiredApprovingReviewCount }}
           }}
@@ -97,6 +99,7 @@ async def fetch_repos(client: httpx.AsyncClient, org: str, token: str) -> list[G
                     url=repo["url"],
                     has_readme=check.get("readme") is not None,
                     has_codeowners=check.get("codeowners") is not None,
+                    dockerfile_present=check.get("dockerfile") is not None,
                     branch_protection_enabled=bool(protection_nodes),
                     required_reviewer_count=required_reviewers,
                 )

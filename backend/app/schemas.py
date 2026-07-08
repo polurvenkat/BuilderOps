@@ -34,6 +34,7 @@ class RepoPatchIn(BaseModel):
     domain: str | None = None
     team: str | None = None
     migration_wave: Literal["not_started", "pilot", "rolling_out", "migrated"] | None = None
+    dockerize_eligible: bool | None = None
 
 
 class OnboardingLogIn(BaseModel):
@@ -54,6 +55,18 @@ class OnboardingLogOut(BaseModel):
 class OnboardingSummaryOut(BaseModel):
     entries: list[OnboardingLogOut]
     median_hours: float | None
+
+
+class PipelineStageStatusOut(BaseModel):
+    name: str
+    status: str
+    pending_approval_description: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class PipelineStatusOut(BaseModel):
+    stages: list[PipelineStageStatusOut]
 
 
 class SyncRunOut(BaseModel):
