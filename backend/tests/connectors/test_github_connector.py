@@ -22,11 +22,13 @@ REPO_CHECKS_RESPONSE = {
         "r0": {
             "readme": {"id": "readme-1"},
             "codeowners": {"id": "codeowners-1"},
+            "dockerfile": {"id": "dockerfile-1"},
             "branchProtectionRules": {"nodes": [{"pattern": "main", "requiredApprovingReviewCount": 2}]},
         },
         "r1": {
             "readme": None,
             "codeowners": None,
+            "dockerfile": None,
             "branchProtectionRules": {"nodes": []},
         },
     }
@@ -54,6 +56,7 @@ async def test_fetch_repos_combines_list_and_checks():
         url="https://github.com/acme-org/checkout-web",
         has_readme=True,
         has_codeowners=True,
+        dockerfile_present=True,
         branch_protection_enabled=True,
         required_reviewer_count=2,
     )
@@ -62,6 +65,7 @@ async def test_fetch_repos_combines_list_and_checks():
         url="https://github.com/acme-org/payments-api",
         has_readme=False,
         has_codeowners=False,
+        dockerfile_present=False,
         branch_protection_enabled=False,
         required_reviewer_count=0,
     )
