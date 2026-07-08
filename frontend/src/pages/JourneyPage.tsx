@@ -1,14 +1,27 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useRepo } from "../hooks/useRepo";
+import { usePipelineStatus } from "../hooks/usePipelineStatus";
 import { ConvergenceDiagram } from "../components/journey/ConvergenceDiagram";
 import { StationCard } from "../components/journey/StationCard";
 import { RepoFieldsForm } from "../components/journey/RepoFieldsForm";
+import { PipelineStatusPanel } from "../components/journey/PipelineStatusPanel";
 import { OnboardingLog } from "../components/journey/OnboardingLog";
-import type { RepoOut } from "../api/types";
+import type { PipelineStageStatusOut, RepoOut } from "../api/types";
 
 const STANDARDIZED_KEYS = ["codeowners_assigned", "domain_assigned", "branch_protection", "readme_present"];
 const STANDARDIZED_CHECK_ORDER = ["codeowners_assigned", "domain_assigned", "branch_protection", "readme_present"];
+
+const PIPED_CHECK_ORDER = ["pipeline_linked", "pipeline_is_yaml", "environment_gates_configured", "dockerized", "deployed_aca"];
+const PIPED_CHECK_LABELS: Record<string, string> = {
+  pipeline_linked: "Pipeline linked",
+  pipeline_is_yaml: "YAML pipeline",
+  environment_gates_configured: "Environment gates",
+  dockerized: "Dockerized",
+  deployed_aca: "Deployed to ACA",
+};
+const PIPED_BLOCKING_KEYS = ["pipeline_linked", "pipeline_is_yaml", "environment_gates_configured", "dockerized"];
+const DEPLOY_STAGE_NAMES = ["DEV", "QA", "UAT", "Prod"];
 
 function fractionPassing(stages: Record<string, { status: string }>, keys: string[]): number {
   if (keys.length === 0) return 0;
@@ -28,6 +41,27 @@ function primaryStandardizedCheck(repo: RepoOut) {
   return repo.stages.codeowners_assigned;
 }
 
+function pipelineLinked(repo: RepoOut): boolean {
+  return repo.stages.pipeline_linked?.status === "pass";
+}
+
+function pipedBadge(repo: RepoOut): "Cleared" | "You are here" | "Locked" {
+  if (!pipelineLinked(repo)) return "Locked";
+  const allBlockingPass = PIPED_BLOCKING_KEYS.every((key) => repo.stages[key]?.status === "pass");
+  return allBlockingPass ? "Cleared" : "You are here";
+}
+
+function pipedChecks(repo: RepoOut) {
+  return PIPED_CHECK_ORDER.map((key) => ({ label: PIPED_CHECK_LABELS[key], check: repo.stages[key] }));
+}
+
+function pipelineProgressFraction(stages: PipelineStageStatusOut[] | null): number {
+  if (!stages) return 0;
+  const relevant = stages.filter((s) => DEPLOY_STAGE_NAMES.includes(s.name));
+  if (relevant.length === 0) return 0;
+  return relevant.filter((s) => s.status === "succeeded").length / relevant.length;
+}
+
 export function JourneyPage() {
   const { id } = useParams<{ id: string }>();
   const { repo: fetchedRepo, loading, error } = useRepo(Number(id));
@@ -36,6 +70,12 @@ export function JourneyPage() {
   useEffect(() => {
     if (fetchedRepo) setRepo(fetchedRepo);
   }, [fetchedRepo]);
+
+  const linked = repo ? pipelineLinked(repo) : false;
+  const { stages: pipelineStages, loading: pipelineLoading, error: pipelineError } = usePipelineStatus(
+    repo?.id ?? 0,
+    linked
+  );
 
   if (loading) {
     return (
@@ -54,6 +94,7 @@ export function JourneyPage() {
   }
 
   const standardsProgress = fractionPassing(repo.stages, ["migrated_from_ado", ...STANDARDIZED_KEYS]);
+  const pipelineProgress = pipelineProgressFraction(pipelineStages);
 
   return (
     <div data-testid="journey-page" className="min-h-screen bg-bg text-chalk max-w-[760px] mx-auto px-6 py-12">
@@ -64,7 +105,7 @@ export function JourneyPage() {
         {repo.name}
       </h1>
 
-      <ConvergenceDiagram standardsProgress={standardsProgress} pipelineProgress={0} testingProgress={0} />
+      <ConvergenceDiagram standardsProgress={standardsProgress} pipelineProgress={pipelineProgress} testingProgress={0} />
 
       <div className="mt-8 flex flex-col gap-4">
         <StationCard
@@ -99,10 +140,11 @@ export function JourneyPage() {
         <StationCard
           code="PI-01"
           title="Piped"
-          description="GitHub Actions are wired up for every environment and verified working."
-          badge="Locked"
+          description="Azure Pipelines is wired up and the YAML pipeline deploys cleanly through every environment."
+          badge={pipedBadge(repo)}
           trackColor="#3FBBA0"
-          lockedNote="Not live yet — unlocks once the CI/CD connector ships."
+          checks={pipedChecks(repo)}
+          lockedNote={!linked ? "Not live yet — unlocks once a pipeline is linked in Azure DevOps." : undefined}
         />
         <StationCard
           code="TS-01"
@@ -130,6 +172,9 @@ export function JourneyPage() {
 
       <div className="mt-8">
         <RepoFieldsForm repo={repo} onUpdated={setRepo} />
+        {linked ? (
+          <PipelineStatusPanel stages={pipelineStages} loading={pipelineLoading} error={pipelineError} />
+        ) : null}
         <OnboardingLog repoId={repo.id} />
       </div>
     </div>
