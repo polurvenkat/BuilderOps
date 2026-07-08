@@ -8,6 +8,7 @@ interface StationCardProps {
   badge: "Cleared" | "You are here" | "Locked";
   trackColor: string;
   check?: StageCheckOut;
+  checks?: { label: string; check?: StageCheckOut }[];
   lockedNote?: string;
 }
 
@@ -17,7 +18,7 @@ const BADGE_STYLES: Record<StationCardProps["badge"], string> = {
   Locked: "bg-chalk-dimmer/20 text-chalk-dimmer",
 };
 
-export function StationCard({ code, title, description, badge, trackColor, check, lockedNote }: StationCardProps) {
+export function StationCard({ code, title, description, badge, trackColor, check, checks, lockedNote }: StationCardProps) {
   const isLocked = badge === "Locked";
 
   return (
@@ -38,7 +39,16 @@ export function StationCard({ code, title, description, badge, trackColor, check
         <p className="text-[13px] text-chalk-dim pt-2">{lockedNote}</p>
       ) : (
         <DetailsToggle>
-          {check ? (
+          {checks ? (
+            <div className="flex flex-col gap-1.5 py-2 border-t border-card-border">
+              {checks.map(({ label, check: c }) => (
+                <div key={label} className="flex justify-between text-[13px]">
+                  <span className="opacity-85">{label}</span>
+                  <span className="font-mono text-[11px] text-chalk-dimmer">{c?.status ?? "unknown"}</span>
+                </div>
+              ))}
+            </div>
+          ) : check ? (
             <div className="flex justify-between text-[13px] py-2 border-t border-card-border">
               <span className="opacity-85">Status: {check.status}</span>
               <span className="font-mono text-[11px] text-chalk-dimmer">
