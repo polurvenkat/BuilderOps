@@ -31,3 +31,14 @@ class OnboardingLogOut(BaseModel):
     logged_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class SyncRunOut(BaseModel):
+    id: int
+    connector: str
+    started_at: datetime
+    finished_at: datetime | None
+    status: str
+    error: str | None
+
+    model_config = {"from_attributes": True}

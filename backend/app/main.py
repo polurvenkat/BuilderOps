@@ -16,6 +16,7 @@ def get_db(request: Request):
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     from app.api.repos import router as repos_router
+    from app.api.sync import router as sync_router
 
     settings = settings or get_settings()
     app = FastAPI(title="BuilderOps API")
@@ -31,5 +32,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(repos_router)
+    app.include_router(sync_router)
 
     return app
