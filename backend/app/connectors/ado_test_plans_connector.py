@@ -7,6 +7,8 @@ from app.connectors.ado_connector import _basic_auth_header
 
 @dataclass
 class TestPlanRunResult:
+    __test__ = False
+
     passed_count: int
     failed_count: int
     total_count: int
