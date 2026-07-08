@@ -7,6 +7,7 @@ from app.main import get_db
 from app.models import OnboardingLog, ReadinessCheck, Repo
 from app.schemas import OnboardingLogIn, OnboardingLogOut, RepoOut, RepoPatchIn, StageCheckOut
 from app.services.readiness_store import upsert_readiness_check
+from app.services.stage import CheckStatus, derive_stage_info
 
 router = APIRouter(prefix="/repos", tags=["repos"])
 
@@ -17,6 +18,11 @@ def _to_repo_out(repo: Repo, session: Session) -> RepoOut:
         c.stage_key: StageCheckOut(status=c.status, source=c.source, detail=c.detail, updated_at=c.updated_at)
         for c in checks
     }
+    stage_info = derive_stage_info(
+        checks={c.stage_key: CheckStatus(status=c.status, status_changed_at=c.status_changed_at) for c in checks},
+        team=repo.team,
+        now=datetime.now(timezone.utc),
+    )
     return RepoOut(
         id=repo.id,
         name=repo.name,
@@ -26,6 +32,10 @@ def _to_repo_out(repo: Repo, session: Session) -> RepoOut:
         github_url=repo.github_url,
         last_synced_at=repo.last_synced_at,
         stages=stages,
+        current_stage=stage_info.current_stage,
+        is_stuck=stage_info.is_stuck,
+        dwell_days=stage_info.dwell_days,
+        stuck_reason=stage_info.stuck_reason,
     )
 
 

@@ -22,6 +22,10 @@ class RepoOut(BaseModel):
     github_url: str
     last_synced_at: datetime | None
     stages: dict[str, StageCheckOut]
+    current_stage: str
+    is_stuck: bool
+    dwell_days: int | None
+    stuck_reason: str | None
 
     model_config = {"from_attributes": True}
 

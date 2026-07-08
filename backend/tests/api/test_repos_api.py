@@ -165,3 +165,17 @@ def test_patch_repo_domain_materializes_a_real_domain_assigned_check():
     assert body["stages"]["domain_assigned"]["status"] == "pass"
     assert body["stages"]["domain_assigned"]["source"] == "manual"
     assert body["stages"]["domain_assigned"]["updated_at"] is not None
+
+
+def test_list_repos_includes_derived_stage_info():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)  # seed_repo only sets codeowners_assigned=pass; everything else defaults missing/fail
+    client = TestClient(app)
+
+    body = client.get(f"/repos/{repo_id}").json()
+
+    assert body["current_stage"] in ("onboarded", "standardized")
+    assert isinstance(body["is_stuck"], bool)
+    if body["is_stuck"]:
+        assert body["stuck_reason"] is not None
+        assert isinstance(body["dwell_days"], int)
