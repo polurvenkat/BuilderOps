@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import Base, get_engine, get_sessionmaker
+from app.scheduler import start_scheduler
 
 
 def get_db(request: Request):
@@ -33,5 +34,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(repos_router)
     app.include_router(sync_router)
+
+    if settings.database_url != "sqlite:///:memory:":
+        start_scheduler(app)
 
     return app
