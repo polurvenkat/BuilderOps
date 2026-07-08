@@ -424,3 +424,17 @@ def test_get_pipeline_status_502_when_ado_call_fails(monkeypatch):
     response = client.get(f"/repos/{repo_id}/pipeline-status")
 
     assert response.status_code == 502
+
+
+def test_patch_repo_updates_e2e_test_plan_id():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    response = client.patch(f"/repos/{repo_id}", json={"e2e_test_plan_id": 42})
+
+    assert response.status_code == 200
+    session = app.state.sessionmaker()
+    repo = session.get(Repo, repo_id)
+    assert repo.e2e_test_plan_id == 42
+    session.close()

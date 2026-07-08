@@ -121,6 +121,8 @@ def patch_repo(repo_id: int, body: RepoPatchIn, session: Session = Depends(get_d
         repo.migration_wave = body.migration_wave
     if body.dockerize_eligible is not None:
         repo.dockerize_eligible = body.dockerize_eligible
+    if body.e2e_test_plan_id is not None:
+        repo.e2e_test_plan_id = body.e2e_test_plan_id
     session.commit()
     return _to_repo_out(repo, session)
 
