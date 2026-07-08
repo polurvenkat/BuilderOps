@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useRepo } from "../hooks/useRepo";
 import { ConvergenceDiagram } from "../components/journey/ConvergenceDiagram";
 import { StationCard } from "../components/journey/StationCard";
+import { RepoFieldsForm } from "../components/journey/RepoFieldsForm";
 import type { RepoOut } from "../api/types";
 
 const STANDARDIZED_KEYS = ["codeowners_assigned", "domain_assigned", "branch_protection", "readme_present"];
@@ -27,7 +29,12 @@ function primaryStandardizedCheck(repo: RepoOut) {
 
 export function JourneyPage() {
   const { id } = useParams<{ id: string }>();
-  const { repo, loading, error } = useRepo(Number(id));
+  const { repo: fetchedRepo, loading, error } = useRepo(Number(id));
+  const [repo, setRepo] = useState<RepoOut | null>(null);
+
+  useEffect(() => {
+    if (fetchedRepo) setRepo(fetchedRepo);
+  }, [fetchedRepo]);
 
   if (loading) {
     return (
@@ -119,6 +126,10 @@ export function JourneyPage() {
           {repo.stuck_reason}
         </div>
       ) : null}
+
+      <div className="mt-8">
+        <RepoFieldsForm repo={repo} onUpdated={setRepo} />
+      </div>
     </div>
   );
 }
