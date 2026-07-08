@@ -108,6 +108,8 @@ def patch_repo(repo_id: int, body: RepoPatchIn, session: Session = Depends(get_d
         repo.team = body.team
     if body.migration_wave is not None:
         repo.migration_wave = body.migration_wave
+    if body.dockerize_eligible is not None:
+        repo.dockerize_eligible = body.dockerize_eligible
     session.commit()
     return _to_repo_out(repo, session)
 

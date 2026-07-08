@@ -34,6 +34,7 @@ class RepoPatchIn(BaseModel):
     domain: str | None = None
     team: str | None = None
     migration_wave: Literal["not_started", "pilot", "rolling_out", "migrated"] | None = None
+    dockerize_eligible: bool | None = None
 
 
 class OnboardingLogIn(BaseModel):

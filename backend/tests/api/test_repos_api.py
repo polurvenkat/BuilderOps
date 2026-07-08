@@ -323,3 +323,31 @@ def test_get_onboarding_log_404_for_missing_repo():
     response = client.get("/repos/999/onboarding-log")
 
     assert response.status_code == 404
+
+
+def test_patch_repo_updates_dockerize_eligible():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    response = client.patch(f"/repos/{repo_id}", json={"dockerize_eligible": True})
+
+    assert response.status_code == 200
+    session = app.state.sessionmaker()
+    repo = session.get(Repo, repo_id)
+    assert repo.dockerize_eligible is True
+    session.close()
+
+
+def test_patch_repo_can_set_dockerize_eligible_false():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    response = client.patch(f"/repos/{repo_id}", json={"dockerize_eligible": False})
+
+    assert response.status_code == 200
+    session = app.state.sessionmaker()
+    repo = session.get(Repo, repo_id)
+    assert repo.dockerize_eligible is False
+    session.close()
