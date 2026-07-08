@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { JourneyPage } from "../../src/pages/JourneyPage";
@@ -66,5 +66,25 @@ describe("JourneyPage", () => {
     renderAtRepo("999");
 
     await waitFor(() => expect(screen.getByText(/404/)).toBeInTheDocument());
+  });
+
+  it("shows the actual failing sub-check (branch_protection), not codeowners_assigned, when stuck at standardized", async () => {
+    const repo: RepoOut = {
+      ...STUCK_REPO,
+      stages: {
+        ...STUCK_REPO.stages,
+        codeowners_assigned: { status: "pass", source: "auto", detail: null, updated_at: "2026-06-01T00:00:00Z" },
+        branch_protection: { status: "fail", source: "auto", detail: null, updated_at: "2026-07-03T00:00:00Z" },
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => repo }));
+
+    renderAtRepo("1");
+
+    await waitFor(() => expect(screen.getByText("checkout-web")).toBeInTheDocument());
+
+    const standardizedCard = screen.getByText("ST-01").closest("div.rounded-xl") as HTMLElement;
+    expect(within(standardizedCard).getByText("Status: fail")).toBeInTheDocument();
+    expect(within(standardizedCard).queryByText("Status: pass")).not.toBeInTheDocument();
   });
 });

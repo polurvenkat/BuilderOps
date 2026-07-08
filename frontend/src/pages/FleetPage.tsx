@@ -6,8 +6,24 @@ import { StuckPanel } from "../components/fleet/StuckPanel";
 import { StationBoard } from "../components/fleet/StationBoard";
 
 export function FleetPage() {
-  const { repos } = useRepos();
+  const { repos, loading, error } = useRepos();
   const [stuckExpanded, setStuckExpanded] = useState(false);
+
+  if (loading) {
+    return (
+      <div data-testid="fleet-page" className="min-h-screen bg-bg text-chalk p-8">
+        Loading…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div data-testid="fleet-page" className="min-h-screen bg-bg text-chalk p-8">
+        {error}
+      </div>
+    );
+  }
 
   return (
     <div data-testid="fleet-page" className="min-h-screen bg-bg text-chalk max-w-[1180px] mx-auto px-6 py-12">

@@ -11,9 +11,20 @@ interface RealColumnProps {
   repos: RepoOut[];
 }
 
+function sortByDwellDesc(repos: RepoOut[]): RepoOut[] {
+  return [...repos].sort((a, b) => {
+    const aStuck = a.is_stuck ? 1 : 0;
+    const bStuck = b.is_stuck ? 1 : 0;
+    if (aStuck !== bStuck) return bStuck - aStuck;
+    return (b.dwell_days ?? 0) - (a.dwell_days ?? 0);
+  });
+}
+
 function RealColumn({ code, title, color, repos }: RealColumnProps) {
   const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? repos : repos.slice(0, CAP);
+  const sorted = sortByDwellDesc(repos);
+  const isCapped = repos.length > 5;
+  const visible = expanded || !isCapped ? sorted : sorted.slice(0, CAP);
 
   return (
     <div className="bg-bg-card-locked rounded-xl flex-1 min-w-[220px] flex flex-col">
@@ -26,7 +37,7 @@ function RealColumn({ code, title, color, repos }: RealColumnProps) {
         {visible.map((repo) => (
           <RepoCard key={repo.id} repo={repo} />
         ))}
-        {repos.length > CAP && !expanded ? (
+        {isCapped && !expanded ? (
           <button
             type="button"
             onClick={() => setExpanded(true)}
@@ -58,6 +69,9 @@ function EmptyColumn({ code, title, color, message }: { code: string; title: str
 }
 
 export function StationBoard({ repos }: { repos: RepoOut[] }) {
+  // Only onboarded/standardized are real columns today because the backend never produces any
+  // other current_stage value; repos with any other stage are intentionally not shown on the
+  // board in this phase — a future phase adding a new stage must also update this component.
   const onboarded = repos.filter((r) => r.current_stage === "onboarded");
   const standardized = repos.filter((r) => r.current_stage === "standardized");
 

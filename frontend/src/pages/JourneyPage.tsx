@@ -2,13 +2,27 @@ import { useParams } from "react-router-dom";
 import { useRepo } from "../hooks/useRepo";
 import { ConvergenceDiagram } from "../components/journey/ConvergenceDiagram";
 import { StationCard } from "../components/journey/StationCard";
+import type { RepoOut } from "../api/types";
 
 const STANDARDIZED_KEYS = ["codeowners_assigned", "domain_assigned", "branch_protection", "readme_present"];
+const STANDARDIZED_CHECK_ORDER = ["codeowners_assigned", "domain_assigned", "branch_protection", "readme_present"];
 
 function fractionPassing(stages: Record<string, { status: string }>, keys: string[]): number {
   if (keys.length === 0) return 0;
   const passing = keys.filter((k) => stages[k]?.status === "pass").length;
   return passing / keys.length;
+}
+
+// Picks the most relevant Standardized sub-check to show in the card's Details panel: when the
+// repo is stuck at the Standardized stage, surface whichever sub-check is actually failing
+// (in a fixed priority order) instead of always defaulting to codeowners_assigned, so the
+// Details panel matches the badge's "You are here" state.
+function primaryStandardizedCheck(repo: RepoOut) {
+  if (repo.is_stuck && repo.current_stage === "standardized") {
+    const failingKey = STANDARDIZED_CHECK_ORDER.find((key) => repo.stages[key]?.status === "fail");
+    if (failingKey) return repo.stages[failingKey];
+  }
+  return repo.stages.codeowners_assigned;
 }
 
 export function JourneyPage() {
@@ -71,7 +85,7 @@ export function JourneyPage() {
                 : "Cleared"
           }
           trackColor="#A79AE8"
-          check={repo.stages.codeowners_assigned}
+          check={primaryStandardizedCheck(repo)}
           lockedNote={repo.current_stage === "onboarded" ? "Not started. Unlocks once Onboarded clears." : undefined}
         />
         <StationCard

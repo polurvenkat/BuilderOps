@@ -7,6 +7,10 @@ interface StatStripProps {
   stuckExpanded: boolean;
 }
 
+// Note: the caller renders STAGE_LABELS[crowded] ?? crowded, so if STAGE_LABELS doesn't have an
+// entry for a given stage, this will surface the raw (unmapped) stage string — acceptable today,
+// but a signal that STAGE_LABELS (here) and the backend's stage ordering need updating together
+// if the set of possible stages changes.
 function mostCrowdedStage(repos: RepoOut[]): string | null {
   const counts = new Map<string, number>();
   for (const repo of repos) {

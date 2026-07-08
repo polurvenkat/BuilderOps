@@ -10,7 +10,7 @@ export interface RepoOut {
   name: string;
   domain: string | null;
   team: string | null;
-  migration_wave: "not_started" | "pilot" | "rolling_out" | "migrated";
+  migration_wave: string;
   github_url: string;
   last_synced_at: string | null;
   stages: Record<string, StageCheckOut>;

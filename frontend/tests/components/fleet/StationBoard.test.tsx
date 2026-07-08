@@ -86,4 +86,35 @@ describe("StationBoard", () => {
 
     expect(screen.getByRole("link", { name: /checkout-web/i })).toHaveAttribute("href", "/repos/42");
   });
+
+  it("shows all 5 repos uncapped when a column has exactly 5", () => {
+    const repos = Array.from({ length: 5 }, (_, i) =>
+      makeRepo({ id: i + 1, name: `repo-${i + 1}`, current_stage: "standardized" })
+    );
+    renderBoard(repos);
+
+    for (let i = 1; i <= 5; i++) {
+      expect(screen.getByText(`repo-${i}`)).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("button", { name: /show all/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the 4 longest-dwelling repos first when capped, not just array order", () => {
+    const repos = [
+      makeRepo({ id: 1, name: "repo-low-a", current_stage: "standardized", is_stuck: true, dwell_days: 2 }),
+      makeRepo({ id: 2, name: "repo-high-a", current_stage: "standardized", is_stuck: true, dwell_days: 50 }),
+      makeRepo({ id: 3, name: "repo-high-b", current_stage: "standardized", is_stuck: true, dwell_days: 40 }),
+      makeRepo({ id: 4, name: "repo-low-b", current_stage: "standardized", is_stuck: true, dwell_days: 1 }),
+      makeRepo({ id: 5, name: "repo-high-c", current_stage: "standardized", is_stuck: true, dwell_days: 30 }),
+      makeRepo({ id: 6, name: "repo-high-d", current_stage: "standardized", is_stuck: true, dwell_days: 20 }),
+    ];
+    renderBoard(repos);
+
+    expect(screen.getByText("repo-high-a")).toBeInTheDocument();
+    expect(screen.getByText("repo-high-b")).toBeInTheDocument();
+    expect(screen.getByText("repo-high-c")).toBeInTheDocument();
+    expect(screen.getByText("repo-high-d")).toBeInTheDocument();
+    expect(screen.queryByText("repo-low-a")).not.toBeInTheDocument();
+    expect(screen.queryByText("repo-low-b")).not.toBeInTheDocument();
+  });
 });
