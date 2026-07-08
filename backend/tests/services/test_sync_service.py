@@ -139,6 +139,35 @@ def release_handler(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json={"value": []})
 
 
+PIPELINES_LIST_MULTI = {"value": [{"id": 7, "name": "checkout-web-ci"}, {"id": 8, "name": "billing-api-ci"}]}
+PIPELINE_DETAIL_2 = {
+    "id": 8, "name": "billing-api-ci",
+    "configuration": {"type": "yaml", "repository": {"url": "https://github.com/acme-org/billing-api"}},
+}
+
+
+def make_pipelines_handler_with_call_counts(call_counts: dict[str, int]):
+    """Build a pipelines handler like pipelines_handler, but for two matched pipelines/repos,
+    and counting hits to the environments-list and checks-configurations endpoints."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = str(request.url.path)
+        if path.endswith("/_apis/pipelines"):
+            return httpx.Response(200, json=PIPELINES_LIST_MULTI)
+        if path.endswith("/_apis/pipelines/7"):
+            return httpx.Response(200, json=PIPELINE_DETAIL)
+        if path.endswith("/_apis/pipelines/8"):
+            return httpx.Response(200, json=PIPELINE_DETAIL_2)
+        if path.endswith("/_apis/pipelines/environments"):
+            call_counts["environments"] = call_counts.get("environments", 0) + 1
+            return httpx.Response(200, json=ENVIRONMENTS)
+        call_counts["checks"] = call_counts.get("checks", 0) + 1
+        env_id = int(request.url.params["resourceId"])
+        return httpx.Response(200, json={"value": [{"id": 1}] if env_id in (12, 13) else []})
+
+    return handler
+
+
 @pytest.mark.asyncio
 async def test_run_ado_pipelines_sync_links_matching_repo_and_computes_checks(session):
     session.add(Repo(name="checkout-web", github_url="https://github.com/acme-org/checkout-web"))
@@ -193,3 +222,52 @@ async def test_run_ado_pipelines_sync_records_failure_on_connector_error(session
 
     assert sync_run.status == "failed"
     assert "500" in sync_run.error or "boom" in sync_run.error
+
+
+@pytest.mark.asyncio
+async def test_run_ado_pipelines_sync_fetches_environment_gates_exactly_once_for_multiple_matched_repos(session):
+    session.add(Repo(name="checkout-web", github_url="https://github.com/acme-org/checkout-web"))
+    session.add(Repo(name="billing-api", github_url="https://github.com/acme-org/billing-api"))
+    session.commit()
+
+    call_counts: dict[str, int] = {}
+    handler = make_pipelines_handler_with_call_counts(call_counts)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://dev.azure.com/acme-ado") as pipelines_client, \
+            httpx.AsyncClient(transport=httpx.MockTransport(release_handler), base_url="https://vsrm.dev.azure.com/acme-ado") as release_client:
+        sync_run = await run_ado_pipelines_sync(
+            session, pipelines_client, release_client, org="acme-ado", project="acme-project", pat="ado-pat", now=NOW,
+        )
+
+    assert sync_run.status == "success"
+    # Both repos matched a pipeline link, but the environments-list call and each of the
+    # 4 environment checks-configurations calls must happen exactly once, not once per repo.
+    assert call_counts["environments"] == 1
+    assert call_counts["checks"] == 4
+
+    for repo_name in ("checkout-web", "billing-api"):
+        repo = session.query(Repo).filter_by(name=repo_name).one()
+        checks = {c.stage_key: c for c in session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()}
+        assert checks["environment_gates_configured"].status == "pass"
+
+
+@pytest.mark.parametrize("github_url_variant", [
+    "https://github.com/acme-org/checkout-web.git",
+    "https://github.com/acme-org/checkout-web/",
+    "https://github.com/ACME-ORG/Checkout-Web",
+])
+@pytest.mark.asyncio
+async def test_run_ado_pipelines_sync_matches_repo_url_despite_trivial_formatting_differences(session, github_url_variant):
+    session.add(Repo(name="checkout-web", github_url=github_url_variant))
+    session.commit()
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(pipelines_handler), base_url="https://dev.azure.com/acme-ado") as pipelines_client, \
+            httpx.AsyncClient(transport=httpx.MockTransport(release_handler), base_url="https://vsrm.dev.azure.com/acme-ado") as release_client:
+        sync_run = await run_ado_pipelines_sync(
+            session, pipelines_client, release_client, org="acme-ado", project="acme-project", pat="ado-pat", now=NOW,
+        )
+
+    assert sync_run.status == "success"
+    repo = session.query(Repo).filter_by(name="checkout-web").one()
+    checks = {c.stage_key: c for c in session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()}
+    assert checks["pipeline_linked"].status == "pass"

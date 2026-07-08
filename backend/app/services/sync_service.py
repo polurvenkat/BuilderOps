@@ -93,6 +93,21 @@ async def run_ado_sync(
 _GATE_ENVIRONMENT_NAMES = ["dev", "qa", "uat", "prod"]
 
 
+def _normalize_repo_url(url: str) -> str:
+    """Normalize a repo URL for comparison.
+
+    ADO's configuration.repository.url and GitHub's GraphQL url field can differ by
+    trivial formatting (a trailing `.git` suffix, a trailing slash, or letter casing)
+    while still referring to the same repository. Normalize both sides before comparing.
+    """
+    normalized = (url or "").strip().lower()
+    normalized = normalized.rstrip("/")
+    if normalized.endswith(".git"):
+        normalized = normalized[: -len(".git")]
+    normalized = normalized.rstrip("/")
+    return normalized
+
+
 async def run_ado_pipelines_sync(
     session: Session,
     pipelines_client: httpx.AsyncClient,
@@ -110,8 +125,20 @@ async def run_ado_pipelines_sync(
         pipeline_links = await fetch_pipeline_links(pipelines_client, org=org, project=project, pat=pat)
         release_defs = await fetch_release_definitions(release_client, org=org, project=project, pat=pat)
 
+        # environment_gates reflects the project's dev/qa/uat/prod ADO Environments and
+        # their approval-check configuration -- project-global data, not per-repo. Fetch
+        # it once here rather than once per matched repo inside the loop below.
+        environment_gates_by_project = await fetch_environment_checks(
+            pipelines_client, org=org, project=project, pat=pat,
+            environment_names=_GATE_ENVIRONMENT_NAMES,
+        )
+
         for repo in session.query(Repo).all():
-            link_match = next((p for p in pipeline_links if p.repository_url == repo.github_url), None)
+            normalized_repo_url = _normalize_repo_url(repo.github_url)
+            link_match = next(
+                (p for p in pipeline_links if _normalize_repo_url(p.repository_url) == normalized_repo_url),
+                None,
+            )
             has_classic = any(repo.name.lower() in rd.name.lower() for rd in release_defs)
 
             if link_match is not None:
@@ -125,10 +152,7 @@ async def run_ado_pipelines_sync(
                 link_row.last_synced_at = now
                 session.flush()
 
-                environment_gates = await fetch_environment_checks(
-                    pipelines_client, org=org, project=project, pat=pat,
-                    environment_names=_GATE_ENVIRONMENT_NAMES,
-                )
+                environment_gates = environment_gates_by_project
             else:
                 environment_gates = {}
 
