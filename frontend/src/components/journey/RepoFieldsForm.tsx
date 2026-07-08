@@ -9,10 +9,23 @@ const WAVE_OPTIONS: { value: RepoOut["migration_wave"]; label: string }[] = [
   { value: "migrated", label: "Migrated" },
 ];
 
+const DOCKERIZE_OPTIONS: { value: "unset" | "true" | "false"; label: string }[] = [
+  { value: "unset", label: "Not yet assessed" },
+  { value: "true", label: "Eligible" },
+  { value: "false", label: "Not eligible" },
+];
+
+function dockerizeEligibleToOption(value: boolean | null | undefined): "unset" | "true" | "false" {
+  if (value === true) return "true";
+  if (value === false) return "false";
+  return "unset";
+}
+
 export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: (repo: RepoOut) => void }) {
   const [domain, setDomain] = useState(repo.domain ?? "");
   const [team, setTeam] = useState(repo.team ?? "");
   const [wave, setWave] = useState(repo.migration_wave);
+  const [dockerizeEligible, setDockerizeEligible] = useState(dockerizeEligibleToOption(repo.dockerize_eligible));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +33,7 @@ export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: 
   const domainId = useId();
   const teamId = useId();
   const waveId = useId();
+  const dockerizeId = useId();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,11 +41,15 @@ export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: 
     setSaved(false);
     setError(null);
     try {
-      const updated = await patchRepo(repo.id, {
+      const body: RepoPatchIn = {
         domain,
         team,
         migration_wave: wave as RepoPatchIn["migration_wave"],
-      });
+      };
+      if (dockerizeEligible !== "unset") {
+        body.dockerize_eligible = dockerizeEligible === "true";
+      }
+      const updated = await patchRepo(repo.id, body);
       onUpdated(updated);
       setSaved(true);
     } catch (err) {
@@ -76,6 +94,23 @@ export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: 
           className="bg-bg border border-card-border rounded px-2 py-1.5 text-[13px] text-chalk"
         >
           {WAVE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label htmlFor={dockerizeId} className="font-mono text-[10.5px] text-chalk-dim uppercase">
+          Dockerize eligible
+        </label>
+        <select
+          id={dockerizeId}
+          value={dockerizeEligible}
+          onChange={(e) => setDockerizeEligible(e.target.value as "unset" | "true" | "false")}
+          className="bg-bg border border-card-border rounded px-2 py-1.5 text-[13px] text-chalk"
+        >
+          {DOCKERIZE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>
