@@ -19,9 +19,9 @@ Internally, the underlying requirements doc organizes work into three named trac
 
 ## 3. Scope for this spec
 
-**In scope:** backend foundation (auth, Postgres, API), GitHub connector, a minimal (list-only) Azure DevOps connector for migration reconciliation, an Azure Resource Graph connector for Container Apps deployment status, the compliance/readiness data model, and the full 5-stage journey UI.
+**In scope:** backend foundation (auth, Postgres, API), a GitHub connector covering only the Onboarded/Standardized checks (repo metadata, README, CODEOWNERS, branch protection/permissions), a minimal (list-only) Azure DevOps connector for migration reconciliation, the compliance/readiness data model (built generically enough to hold future Piped/Tested stage keys without a schema change), and the full 5-stage journey UI.
 
-**Explicitly out of scope (future specs):** the CI/CD pipeline-template and gate-policy engine, self-service QA/UAT environment provisioning (the platform's one write/execute, high-blast-radius component — needs its own permission boundary and approval gates when it's built), the E2E/load test generation and execution engine, RBAC/multi-tenant auth, GitHub webhooks (event-driven sync).
+**Explicitly out of scope (future specs):** the Azure Resource Graph connector and GitHub Actions/workflow polling (both are Piped-card data sources, built in the CI/CD phase), the CI/CD pipeline-template and gate-policy engine, self-service QA/UAT environment provisioning (the platform's one write/execute, high-blast-radius component — needs its own permission boundary and approval gates when it's built), the E2E/load test generation and execution engine, RBAC/multi-tenant auth, GitHub webhooks (event-driven sync).
 
 **Deliberate design choice:** the UI ships all 5 journey stages now, even though only the first two (Onboarded, Standardized) have real data behind them in this phase. Piped and Tested render using the same "Locked" treatment as any other not-yet-reached stage, with a note naming what unlocks them ("Unlocks once the CI/CD connector ships"). This avoids a UI redesign when the next two phases land, and previews the full journey so users understand the destination even before it's built.
 
@@ -29,10 +29,10 @@ Internally, the underlying requirements doc organizes work into three named trac
 
 - **Backend:** Python (FastAPI) + Postgres. An Azure Postgres Flexible Server database named `builderOps` already exists at `quality-pulse-postgres.postgres.database.azure.com` — the backend connects to it rather than provisioning a new instance.
 - **Background worker:** APScheduler-based, in-process or a small separate worker — no Celery/Redis needed at this scale. Scheduled connector syncs write only to Postgres; the API/UI never calls GitHub/ADO/Azure live. A manual "Refresh" button triggers an on-demand run of the same job.
-- **Connectors** (read-only, isolated from any future write/execute component):
-  - **GitHub connector** — GraphQL-based. Pulls repo metadata, file presence (README/CODEOWNERS/Dockerfile/.devcontainer), branch protection + permissions, and GitHub Actions workflow/run status per environment.
+- **Connectors** (read-only, isolated from any future write/execute component). Phase 0 only needs enough data to power the **Onboarded** and **Standardized** cards — connectors for **Piped** (GitHub Actions per env, Dockerfile, Azure Resource Graph) and **Tested** (test-framework/load-test feeds) are built in their own future phases, not here:
+  - **GitHub connector** — GraphQL-based. Pulls repo metadata and file presence (README/CODEOWNERS), and branch protection + permissions. Does *not* pull Actions workflow/run status or Dockerfile presence in this phase — those are Piped-card concerns, deferred.
   - **ADO connector v0** — repo list only (name, last activity), used solely to compute "exists in ADO but not GitHub" for the Onboarded check. No pipeline/build data, no historical comparison. Full ADO connector remains out of scope until/unless needed later.
-  - **Azure connector** — Resource Graph query against Container Apps, to detect actual ACA deployments (part of the Piped stage, once built). **Open question, unresolved:** how an ACA app maps back to a GitHub repo (naming convention vs. a tag on the resource) — must be resolved before this specific check is implemented.
+  - **Azure connector — deferred, not built in Phase 0.** Resource Graph query against Container Apps, to detect actual ACA deployments, is part of the future CI/CD phase that builds the Piped card. **Open question for that future phase:** how an ACA app maps back to a GitHub repo (naming convention vs. a tag on the resource).
 - **Frontend:** React + Tailwind SPA.
 - **Auth:** Azure AD (Entra ID) SSO via OIDC. All authenticated users see all repos — no RBAC/multi-tenant scoping in this phase.
 - **Secrets:** Azure Key Vault only. The backend's Managed Identity is granted the "Key Vault Secrets User" RBAC role; secrets (DB password, GitHub App key, ADO PAT) are fetched via `azure-identity`'s `DefaultAzureCredential` + `azure-keyvault-secrets`'s `SecretClient`, cached in memory after first fetch. Local dev uses the developer's own `az login` session via the same `DefaultAzureCredential` fallback — no `.env` files with real secrets. No credential is ever stored in code, config, chat, or this document.
@@ -40,12 +40,10 @@ Internally, the underlying requirements doc organizes work into three named trac
 ### Efficiency
 
 - **GitHub GraphQL batching:** file-existence checks use aliased `object(expression: "HEAD:<path>")` queries, batching up to 100 repos per request — a handful of API calls per sync across hundreds of repos, not hundreds of calls.
-- **Actions run status:** pull only the latest run per workflow (`per_page=1`), never full history.
-- **Tiered sync cadence:** structural checks (naming, CODEOWNERS, Dockerfile) sync every few hours; Actions/pipeline status syncs every 30 min but skips repos with no commits since the last sync (`pushed_at` filter); ADO reconciliation and Azure Resource Graph queries sync daily.
-- **Azure Resource Graph:** one KQL query returns all Container Apps org-wide, not one call per resource group.
+- **Tiered sync cadence:** structural checks (CODEOWNERS, README, branch protection) sync every few hours; ADO reconciliation syncs daily. (Actions/pipeline status and Azure Resource Graph cadence will be defined in the future phase that builds those connectors.)
 - **Async worker:** httpx async client with bounded concurrency (e.g. a semaphore of 10) so repos process in parallel up to the rate-limit budget.
 - **DB writes:** batched upserts (`ON CONFLICT DO UPDATE`) per sync run inside one transaction, unique index on `(repo_id, stage_key)`.
-- **Read path:** UI/API only ever reads Postgres — page loads never depend on GitHub/ADO/Azure latency or availability.
+- **Read path:** UI/API only ever reads Postgres — page loads never depend on GitHub/ADO latency or availability.
 - **Deferred, documented as a v1.1 optimization, not built now:** GitHub webhooks (push / branch-protection-changed events) for near-real-time updates instead of polling. Needs a public ingress endpoint + GitHub App webhook registration — more infra than this phase needs.
 
 ## 5. Data model
