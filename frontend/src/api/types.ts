@@ -25,3 +25,27 @@ export interface ListReposParams {
   domain?: string;
   sort?: "dwell_desc";
 }
+
+export interface RepoPatchIn {
+  domain?: string;
+  team?: string;
+  migration_wave?: "not_started" | "pilot" | "rolling_out" | "migrated";
+}
+
+export interface OnboardingLogIn {
+  engineer_name: string;
+  hours: number;
+}
+
+export interface OnboardingLogOut {
+  id: number;
+  repo_id: number;
+  engineer_name: string;
+  hours: number;
+  logged_at: string;
+}
+
+export interface OnboardingSummaryOut {
+  entries: OnboardingLogOut[];
+  median_hours: number | null;
+}

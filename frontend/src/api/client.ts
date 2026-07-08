@@ -1,4 +1,11 @@
-import type { ListReposParams, RepoOut } from "./types";
+import type {
+  ListReposParams,
+  OnboardingLogIn,
+  OnboardingLogOut,
+  OnboardingSummaryOut,
+  RepoOut,
+  RepoPatchIn,
+} from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -20,6 +27,38 @@ export async function getRepo(id: number): Promise<RepoOut> {
   const response = await fetch(`${BASE_URL}/repos/${id}`);
   if (!response.ok) {
     throw new Error(`Failed to get repo ${id}: HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function patchRepo(id: number, body: RepoPatchIn): Promise<RepoOut> {
+  const response = await fetch(`${BASE_URL}/repos/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update repo ${id}: HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function getOnboardingLog(id: number): Promise<OnboardingSummaryOut> {
+  const response = await fetch(`${BASE_URL}/repos/${id}/onboarding-log`);
+  if (!response.ok) {
+    throw new Error(`Failed to get onboarding log for repo ${id}: HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function postOnboardingLog(id: number, body: OnboardingLogIn): Promise<OnboardingLogOut> {
+  const response = await fetch(`${BASE_URL}/repos/${id}/onboarding-log`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to log onboarding time for repo ${id}: HTTP ${response.status}`);
   }
   return response.json();
 }
