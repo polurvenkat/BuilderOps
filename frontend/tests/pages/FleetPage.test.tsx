@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FleetPage } from "../../src/pages/FleetPage";
@@ -37,5 +38,39 @@ describe("FleetPage", () => {
     expect(screen.getByText("Repo fleet")).toBeInTheDocument();
     expect(screen.getByText("CI/CD & environments")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());
+  });
+
+  it("toggles the stuck panel's hidden attribute when the stat tile is clicked", async () => {
+    const user = userEvent.setup();
+    const repos: RepoOut[] = [
+      {
+        id: 1,
+        name: "stuck-repo",
+        domain: null,
+        team: null,
+        migration_wave: "not_started",
+        github_url: "https://github.com/acme/stuck-repo",
+        last_synced_at: null,
+        stages: {},
+        current_stage: "standardized",
+        is_stuck: true,
+        dwell_days: 20,
+        stuck_reason: "reason",
+      },
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => repos }));
+
+    const { container } = render(
+      <MemoryRouter>
+        <FleetPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("stuck-row-name")).toBeInTheDocument());
+    expect(container.querySelector('[data-testid="stuck-panel"]')).toHaveAttribute("hidden");
+
+    await user.click(screen.getByRole("button", { name: /stuck/i }));
+
+    expect(container.querySelector('[data-testid="stuck-panel"]')).not.toHaveAttribute("hidden");
   });
 });
