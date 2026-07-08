@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useRepos } from "../hooks/useRepos";
 import { StatStrip } from "../components/fleet/StatStrip";
 import { Legend } from "../components/fleet/Legend";
+import { StationBoard } from "../components/fleet/StationBoard";
 
 export function FleetPage() {
   const { repos } = useRepos();
@@ -19,6 +20,7 @@ export function FleetPage() {
 
       <StatStrip repos={repos} onToggleStuck={() => setStuckExpanded((prev) => !prev)} stuckExpanded={stuckExpanded} />
       <Legend />
+      <StationBoard repos={repos} />
     </div>
   );
 }
