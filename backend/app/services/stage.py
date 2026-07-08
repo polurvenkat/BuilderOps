@@ -5,6 +5,7 @@ STAGE_ORDER: list[tuple[str, list[str]]] = [
     ("onboarded", ["migrated_from_ado"]),
     ("standardized", ["codeowners_assigned", "domain_assigned", "branch_protection", "readme_present"]),
     ("piped", ["pipeline_linked", "pipeline_is_yaml", "environment_gates_configured", "dockerized"]),
+    ("tested", ["e2e_covered"]),
 ]
 
 REASON_TEXT: dict[str, str] = {
@@ -17,6 +18,7 @@ REASON_TEXT: dict[str, str] = {
     "pipeline_is_yaml": "Pipeline hasn't migrated to YAML",
     "environment_gates_configured": "Missing an approval/check on UAT or Prod",
     "dockerized": "Dockerfile missing for a dockerize-eligible repo",
+    "e2e_covered": "E2E tests failing on the latest run",
 }
 
 

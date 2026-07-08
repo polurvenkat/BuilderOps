@@ -26,13 +26,63 @@ def passing_piped_checks(now=NOW):
     return checks
 
 
-def test_fully_passing_repo_including_piped_clamps_at_piped_and_is_not_stuck():
-    info = derive_stage_info(passing_piped_checks(), team="Growth", now=NOW)
+def passing_tested_checks(now=NOW):
+    checks = passing_piped_checks(now)
+    checks["e2e_covered"] = CheckStatus(status="pass", status_changed_at=now)
+    return checks
 
-    assert info.current_stage == "piped"
+
+def test_fully_passing_repo_including_tested_clamps_at_tested_and_is_not_stuck():
+    info = derive_stage_info(passing_tested_checks(), team="Growth", now=NOW)
+
+    assert info.current_stage == "tested"
     assert info.is_stuck is False
     assert info.dwell_days is None
     assert info.stuck_reason is None
+
+
+def test_piped_repo_with_e2e_covered_pending_convention_clamps_at_tested_not_stuck():
+    checks = passing_piped_checks()
+    checks["e2e_covered"] = CheckStatus(status="pending_convention", status_changed_at=NOW)
+
+    info = derive_stage_info(checks, team=None, now=NOW)
+
+    assert info.current_stage == "tested"
+    assert info.is_stuck is False
+
+
+def test_repo_stuck_at_tested_when_e2e_covered_fails():
+    checks = passing_tested_checks()
+    checks["e2e_covered"] = CheckStatus(status="fail", status_changed_at=NOW - timedelta(days=4))
+
+    info = derive_stage_info(checks, team="Jiju", now=NOW)
+
+    assert info.current_stage == "tested"
+    assert info.is_stuck is True
+    assert info.dwell_days == 4
+    assert info.stuck_reason == "E2E tests failing on the latest run — waiting on Jiju team"
+
+
+def test_unit_integration_and_load_tested_never_block_progression():
+    checks = passing_tested_checks()
+    checks["unit_tested"] = CheckStatus(status="pending_convention", status_changed_at=NOW)
+    checks["integration_tested"] = CheckStatus(status="pending_convention", status_changed_at=NOW)
+    checks["load_tested"] = CheckStatus(status="unknown", status_changed_at=NOW)
+
+    info = derive_stage_info(checks, team=None, now=NOW)
+
+    assert info.current_stage == "tested"
+    assert info.is_stuck is False
+
+
+def test_piped_failure_still_blocks_tested_from_being_reached():
+    checks = passing_tested_checks()
+    checks["dockerized"] = CheckStatus(status="fail", status_changed_at=NOW - timedelta(days=6))
+
+    info = derive_stage_info(checks, team=None, now=NOW)
+
+    assert info.current_stage == "piped"
+    assert info.is_stuck is True
 
 
 def test_standardized_repo_with_no_piped_data_yet_shows_stuck_at_piped():
@@ -58,22 +108,22 @@ def test_repo_stuck_at_piped_uses_oldest_failing_check():
 
 
 def test_environment_gates_unknown_does_not_block_piped_progression():
-    checks = passing_piped_checks()
+    checks = passing_tested_checks()
     checks["environment_gates_configured"] = CheckStatus(status="unknown", status_changed_at=NOW)
 
     info = derive_stage_info(checks, team=None, now=NOW)
 
-    assert info.current_stage == "piped"
+    assert info.current_stage == "tested"
     assert info.is_stuck is False
 
 
 def test_deployed_aca_unknown_never_blocks_progression():
-    checks = passing_piped_checks()
+    checks = passing_tested_checks()
     checks["deployed_aca"] = CheckStatus(status="unknown", status_changed_at=NOW)
 
     info = derive_stage_info(checks, team=None, now=NOW)
 
-    assert info.current_stage == "piped"
+    assert info.current_stage == "tested"
     assert info.is_stuck is False
 
 
@@ -114,12 +164,12 @@ def test_onboarded_failure_takes_priority_over_standardized_failure():
 
 
 def test_naming_standardized_never_blocks_progression():
-    checks = passing_piped_checks()
+    checks = passing_tested_checks()
     checks["naming_standardized"] = CheckStatus(status="pending_convention", status_changed_at=NOW)
 
     info = derive_stage_info(checks, team=None, now=NOW)
 
-    assert info.current_stage == "piped"
+    assert info.current_stage == "tested"
     assert info.is_stuck is False
 
 

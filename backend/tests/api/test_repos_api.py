@@ -179,7 +179,7 @@ def test_repo_with_domain_set_directly_is_not_falsely_stuck():
     session.commit()
     repo_id = repo.id
     now = datetime.now(timezone.utc)
-    for key in ["migrated_from_ado", "codeowners_assigned", "branch_protection", "readme_present", "pipeline_linked", "pipeline_is_yaml", "environment_gates_configured", "dockerized"]:
+    for key in ["migrated_from_ado", "codeowners_assigned", "branch_protection", "readme_present", "pipeline_linked", "pipeline_is_yaml", "environment_gates_configured", "dockerized", "e2e_covered"]:
         session.add(ReadinessCheck(
             repo_id=repo_id, stage_key=key, status="pass", source="auto",
             detail=None, updated_at=now,
@@ -268,7 +268,7 @@ def test_list_repos_sorts_by_dwell_desc():
     def add_all_standardized_checks(repo, extra_status="pass", extra_changed=now):
         keys = [
             "migrated_from_ado", "codeowners_assigned", "domain_assigned", "branch_protection", "readme_present",
-            "pipeline_linked", "pipeline_is_yaml", "environment_gates_configured", "dockerized",
+            "pipeline_linked", "pipeline_is_yaml", "environment_gates_configured", "dockerized", "e2e_covered",
         ]
         for key in keys:
             status = extra_status if key == "codeowners_assigned" else "pass"
