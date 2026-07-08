@@ -1,11 +1,13 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { FleetPage } from "./pages/FleetPage";
 import { JourneyPage } from "./pages/JourneyPage";
+import { RepoTablePage } from "./pages/RepoTablePage";
 
 function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<FleetPage />} />
+      <Route path="/repos" element={<RepoTablePage />} />
       <Route path="/repos/:id" element={<JourneyPage />} />
     </Routes>
   );
