@@ -32,6 +32,7 @@ class ReadinessCheck(Base):
     source: Mapped[str] = mapped_column(String, nullable=False)
     detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    status_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class AdoRepoSnapshot(Base):
