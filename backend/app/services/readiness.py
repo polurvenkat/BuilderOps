@@ -9,8 +9,11 @@ def compute_readiness_checks(
     ado_repo_names: set[str],
     repo_id: int,
     now: datetime,
+    dockerize_eligible: bool | None = None,
 ) -> list[ReadinessCheck]:
     migrated = github_repo.name not in ado_repo_names
+
+    dockerized_status = "fail" if (dockerize_eligible and not github_repo.dockerfile_present) else "pass"
 
     return [
         ReadinessCheck(
@@ -49,6 +52,22 @@ def compute_readiness_checks(
             repo_id=repo_id,
             stage_key="naming_standardized",
             status="pending_convention",
+            source="auto",
+            detail=None,
+            updated_at=now,
+        ),
+        ReadinessCheck(
+            repo_id=repo_id,
+            stage_key="dockerized",
+            status=dockerized_status,
+            source="auto",
+            detail={"eligible": dockerize_eligible, "dockerfile_present": github_repo.dockerfile_present},
+            updated_at=now,
+        ),
+        ReadinessCheck(
+            repo_id=repo_id,
+            stage_key="deployed_aca",
+            status="unknown",
             source="auto",
             detail=None,
             updated_at=now,

@@ -12,6 +12,7 @@ def make_github_repo(**overrides):
         url="https://github.com/acme-org/checkout-web",
         has_readme=True,
         has_codeowners=True,
+        dockerfile_present=True,
         branch_protection_enabled=True,
         required_reviewer_count=2,
     )
@@ -61,3 +62,44 @@ def test_domain_assigned_is_never_produced_by_the_readiness_service():
 def test_all_checks_are_stamped_with_repo_id_and_timestamp():
     checks = compute_readiness_checks(make_github_repo(), ado_repo_names=set(), repo_id=42, now=NOW)
     assert all(c.repo_id == 42 and c.updated_at == NOW for c in checks)
+
+
+def test_dockerized_passes_when_not_yet_assessed():
+    checks = compute_readiness_checks(make_github_repo(), ado_repo_names=set(), repo_id=1, now=NOW, dockerize_eligible=None)
+    dockerized = next(c for c in checks if c.stage_key == "dockerized")
+    assert dockerized.status == "pass"
+    assert dockerized.detail == {"eligible": None, "dockerfile_present": True}
+
+
+def test_dockerized_passes_when_assessed_not_eligible_regardless_of_dockerfile():
+    checks = compute_readiness_checks(
+        make_github_repo(dockerfile_present=False), ado_repo_names=set(), repo_id=1, now=NOW, dockerize_eligible=False,
+    )
+    dockerized = next(c for c in checks if c.stage_key == "dockerized")
+    assert dockerized.status == "pass"
+    assert dockerized.detail == {"eligible": False, "dockerfile_present": False}
+
+
+def test_dockerized_passes_when_eligible_and_dockerfile_present():
+    checks = compute_readiness_checks(
+        make_github_repo(dockerfile_present=True), ado_repo_names=set(), repo_id=1, now=NOW, dockerize_eligible=True,
+    )
+    dockerized = next(c for c in checks if c.stage_key == "dockerized")
+    assert dockerized.status == "pass"
+    assert dockerized.detail == {"eligible": True, "dockerfile_present": True}
+
+
+def test_dockerized_fails_only_when_eligible_and_dockerfile_missing():
+    checks = compute_readiness_checks(
+        make_github_repo(dockerfile_present=False), ado_repo_names=set(), repo_id=1, now=NOW, dockerize_eligible=True,
+    )
+    dockerized = next(c for c in checks if c.stage_key == "dockerized")
+    assert dockerized.status == "fail"
+    assert dockerized.detail == {"eligible": True, "dockerfile_present": False}
+
+
+def test_deployed_aca_always_ships_as_unknown():
+    checks = compute_readiness_checks(make_github_repo(), ado_repo_names=set(), repo_id=1, now=NOW)
+    deployed_aca = next(c for c in checks if c.stage_key == "deployed_aca")
+    assert deployed_aca.status == "unknown"
+    assert deployed_aca.source == "auto"
