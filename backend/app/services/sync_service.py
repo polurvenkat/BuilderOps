@@ -7,6 +7,7 @@ from app.connectors.ado_connector import fetch_ado_repos
 from app.connectors.github_connector import fetch_repos
 from app.models import AdoRepoSnapshot, Repo, SyncRun
 from app.services.readiness import compute_readiness_checks
+from app.services.readiness_store import upsert_readiness_check
 
 
 def _parse_iso_datetime(iso_string: str | None) -> datetime | None:
@@ -37,7 +38,7 @@ async def run_github_sync(
             repo.last_synced_at = now
 
             for check in compute_readiness_checks(github_repo, ado_repo_names, repo.id, now):
-                session.merge(check)
+                upsert_readiness_check(session, check)
 
         sync_run.status = "success"
         sync_run.finished_at = now

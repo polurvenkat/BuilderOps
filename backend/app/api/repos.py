@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.main import get_db
 from app.models import OnboardingLog, ReadinessCheck, Repo
 from app.schemas import OnboardingLogIn, OnboardingLogOut, RepoOut, RepoPatchIn, StageCheckOut
+from app.services.readiness_store import upsert_readiness_check
 
 router = APIRouter(prefix="/repos", tags=["repos"])
 
@@ -16,19 +17,14 @@ def _to_repo_out(repo: Repo, session: Session) -> RepoOut:
         c.stage_key: StageCheckOut(status=c.status, source=c.source, detail=c.detail, updated_at=c.updated_at)
         for c in checks
     }
-    # domain_assigned is manual-only (set via PATCH) and never gets a ReadinessCheck row,
-    # so it must be synthesized directly from repo.domain to appear in the API response.
-    stages["domain_assigned"] = StageCheckOut(
-        status="pass" if repo.domain else "fail",
-        source="manual",
-        detail=None,
-        updated_at=None,
-    )
     return RepoOut(
         id=repo.id,
         name=repo.name,
         domain=repo.domain,
+        team=repo.team,
         migration_wave=repo.migration_wave,
+        github_url=repo.github_url,
+        last_synced_at=repo.last_synced_at,
         stages=stages,
     )
 
@@ -54,6 +50,17 @@ def patch_repo(repo_id: int, body: RepoPatchIn, session: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Repo not found")
     if body.domain is not None:
         repo.domain = body.domain
+        now = datetime.now(timezone.utc)
+        upsert_readiness_check(session, ReadinessCheck(
+            repo_id=repo_id,
+            stage_key="domain_assigned",
+            status="pass" if body.domain else "fail",
+            source="manual",
+            detail=None,
+            updated_at=now,
+        ))
+    if body.team is not None:
+        repo.team = body.team
     if body.migration_wave is not None:
         repo.migration_wave = body.migration_wave
     session.commit()

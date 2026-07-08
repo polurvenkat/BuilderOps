@@ -17,7 +17,10 @@ class RepoOut(BaseModel):
     id: int
     name: str
     domain: str | None
+    team: str | None
     migration_wave: str
+    github_url: str
+    last_synced_at: datetime | None
     stages: dict[str, StageCheckOut]
 
     model_config = {"from_attributes": True}
@@ -25,6 +28,7 @@ class RepoOut(BaseModel):
 
 class RepoPatchIn(BaseModel):
     domain: str | None = None
+    team: str | None = None
     migration_wave: Literal["not_started", "pilot", "rolling_out", "migrated"] | None = None
 
 

@@ -92,3 +92,19 @@ async def test_run_ado_sync_stores_snapshot():
     assert sync_run.status == "success"
     snapshot = session.query(AdoRepoSnapshot).one()
     assert snapshot.name == "legacy-batch"
+
+
+@pytest.mark.asyncio
+async def test_run_github_sync_preserves_status_changed_at_across_unchanged_runs(session):
+    transport = httpx.MockTransport(github_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as client:
+        await run_github_sync(session, client, org="acme-org", token="gh-token", now=NOW)
+
+    later = NOW.replace(year=NOW.year + 1)  # clearly-later timestamp, same mocked (unchanged) data
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as client:
+        await run_github_sync(session, client, org="acme-org", token="gh-token", now=later)
+
+    repo = session.query(Repo).filter_by(name="checkout-web").one()
+    check = session.query(ReadinessCheck).filter_by(repo_id=repo.id, stage_key="codeowners_assigned").one()
+    assert _naive(check.updated_at) == _naive(later)          # touched every sync
+    assert _naive(check.status_changed_at) == _naive(NOW)     # unchanged, since status didn't change
