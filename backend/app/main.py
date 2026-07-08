@@ -15,6 +15,8 @@ def get_db(request: Request):
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    from app.api.repos import router as repos_router
+
     settings = settings or get_settings()
     app = FastAPI(title="BuilderOps API")
 
@@ -27,5 +29,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health")
     def health():
         return {"status": "ok"}
+
+    app.include_router(repos_router)
 
     return app
