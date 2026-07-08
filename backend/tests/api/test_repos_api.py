@@ -167,6 +167,34 @@ def test_patch_repo_domain_materializes_a_real_domain_assigned_check():
     assert body["stages"]["domain_assigned"]["updated_at"] is not None
 
 
+def test_repo_with_domain_set_directly_is_not_falsely_stuck():
+    # domain is set directly on the model (not via PATCH), so no real domain_assigned
+    # ReadinessCheck row is ever materialized. The fallback synthesis in _to_repo_out
+    # must still recognize the domain as set, or this repo gets incorrectly flagged stuck.
+    app = create_app(make_test_settings())
+    session = app.state.sessionmaker()
+    repo = Repo(name="direct-domain-repo", github_url="https://github.com/acme-org/direct-domain-repo", domain="Growth")
+    session.add(repo)
+    session.commit()
+    repo_id = repo.id
+    now = datetime.now(timezone.utc)
+    for key in ["migrated_from_ado", "codeowners_assigned", "branch_protection", "readme_present"]:
+        session.add(ReadinessCheck(
+            repo_id=repo_id, stage_key=key, status="pass", source="auto",
+            detail=None, updated_at=now,
+        ))
+    session.commit()
+    session.close()
+    client = TestClient(app)
+
+    response = client.get(f"/repos/{repo_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stages"]["domain_assigned"]["status"] == "pass"
+    assert body["is_stuck"] is False
+
+
 def test_list_repos_includes_derived_stage_info():
     app = create_app(make_test_settings())
     repo_id = seed_repo(app)  # seed_repo only sets codeowners_assigned=pass; everything else defaults missing/fail

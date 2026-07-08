@@ -24,8 +24,22 @@ def _to_repo_out(repo: Repo, session: Session) -> RepoOut:
         c.stage_key: StageCheckOut(status=c.status, source=c.source, detail=c.detail, updated_at=c.updated_at)
         for c in checks
     }
+    stage_checks = {
+        c.stage_key: CheckStatus(status=c.status, status_changed_at=_aware(c.status_changed_at)) for c in checks
+    }
+    if "domain_assigned" not in stages:
+        # No real ReadinessCheck row for domain_assigned exists (e.g. pre-existing data,
+        # or a write path other than PATCH /repos/{id} that set repo.domain directly).
+        # Synthesize a fallback so a repo with a real domain isn't misreported as stuck.
+        domain_status = "pass" if repo.domain else "fail"
+        stages["domain_assigned"] = StageCheckOut(
+            status=domain_status, source="manual", detail=None, updated_at=None
+        )
+        stage_checks["domain_assigned"] = CheckStatus(
+            status=domain_status, status_changed_at=_aware(repo.created_at)
+        )
     stage_info = derive_stage_info(
-        checks={c.stage_key: CheckStatus(status=c.status, status_changed_at=_aware(c.status_changed_at)) for c in checks},
+        checks=stage_checks,
         team=repo.team,
         now=datetime.now(timezone.utc),
     )
