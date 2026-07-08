@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { patchRepo } from "../../api/client";
-import type { RepoOut } from "../../api/types";
+import type { RepoOut, RepoPatchIn } from "../../api/types";
 
 const WAVE_OPTIONS: { value: RepoOut["migration_wave"]; label: string }[] = [
   { value: "not_started", label: "Not started" },
@@ -30,7 +30,7 @@ export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: 
       const updated = await patchRepo(repo.id, {
         domain,
         team,
-        migration_wave: wave as RepoOut["migration_wave"],
+        migration_wave: wave as RepoPatchIn["migration_wave"],
       });
       onUpdated(updated);
       setSaved(true);
