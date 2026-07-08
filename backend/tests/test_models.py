@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import threading
 
 from app.db import Base, get_engine, get_sessionmaker
 from app.models import AdoRepoSnapshot, OnboardingLog, Repo, ReadinessCheck, SyncRun
@@ -70,3 +71,56 @@ def test_ado_snapshot_onboarding_log_and_sync_run():
     assert session.query(AdoRepoSnapshot).count() == 1
     assert session.query(OnboardingLog).count() == 1
     assert session.query(SyncRun).filter_by(connector="github").one().status == "running"
+
+
+def test_sqlite_in_memory_thread_safety():
+    """
+    Regression test: Verify that SQLite in-memory databases work across threads.
+
+    FastAPI runs sync path-operation functions and dependencies in a worker thread pool,
+    which is different from the thread that calls Base.metadata.create_all(engine) during
+    app startup. Without StaticPool + check_same_thread=False, each thread would get its
+    own separate empty in-memory database, causing "no such table" errors in worker threads.
+
+    This test proves that tables created on the main thread are accessible from worker threads.
+    """
+    # Create engine and tables on main thread
+    engine = get_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    sessionmaker_factory = get_sessionmaker(engine)
+
+    # Add a repo on main thread
+    main_session = sessionmaker_factory()
+    repo = Repo(name="test-repo", github_url="https://github.com/test/repo")
+    main_session.add(repo)
+    main_session.commit()
+    main_session.close()
+
+    # Track any exceptions from the worker thread
+    exceptions = []
+
+    def worker_thread_task():
+        """Run in a separate thread to simulate FastAPI worker thread behavior."""
+        try:
+            # Open a fresh session in the worker thread
+            worker_session = sessionmaker_factory()
+
+            # Should be able to query Repo table without "no such table" error
+            count = worker_session.query(Repo).count()
+            assert count == 1, f"Expected 1 repo, got {count}"
+
+            # Verify we can fetch the repo that was created on main thread
+            fetched = worker_session.query(Repo).filter_by(name="test-repo").one()
+            assert fetched.github_url == "https://github.com/test/repo"
+
+            worker_session.close()
+        except Exception as e:
+            exceptions.append(e)
+
+    # Run the worker thread task
+    thread = threading.Thread(target=worker_thread_task)
+    thread.start()
+    thread.join()
+
+    # Assert no exceptions occurred in the worker thread
+    assert len(exceptions) == 0, f"Worker thread raised exception(s): {exceptions}"
