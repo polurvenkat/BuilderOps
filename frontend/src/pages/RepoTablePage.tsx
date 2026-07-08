@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useRepos } from "../hooks/useRepos";
 import { STAGE_LABELS, formatDwell } from "../lib/format";
+import type { RepoOut } from "../api/types";
 
 const CHECK_COLUMNS = [
   "migrated_from_ado",
@@ -18,6 +19,40 @@ function checkIcon(status: string | undefined): string {
   return "?";
 }
 
+function sortByDwellDesc(repos: RepoOut[]): RepoOut[] {
+  return [...repos].sort((a, b) => {
+    const aStuck = a.is_stuck ? 1 : 0;
+    const bStuck = b.is_stuck ? 1 : 0;
+    if (aStuck !== bStuck) return bStuck - aStuck;
+    return (b.dwell_days ?? 0) - (a.dwell_days ?? 0);
+  });
+}
+
+function toCsv(repos: RepoOut[]): string {
+  const header = ["Name", "Domain", "Team", "Wave", "Stage", "Dwell Days", ...CHECK_COLUMNS];
+  const rows = repos.map((r) => [
+    r.name,
+    r.domain ?? "",
+    r.team ?? "",
+    r.migration_wave,
+    r.current_stage,
+    String(r.dwell_days ?? ""),
+    ...CHECK_COLUMNS.map((key) => r.stages[key]?.status ?? ""),
+  ]);
+  return [header, ...rows].map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n");
+}
+
+function downloadCsv(repos: RepoOut[]) {
+  const csv = toCsv(repos);
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "repos.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function RepoTablePage() {
   const { repos } = useRepos();
   const [searchParams] = useSearchParams();
@@ -28,19 +63,19 @@ export function RepoTablePage() {
 
   const domains = useMemo(() => Array.from(new Set(repos.map((r) => r.domain).filter(Boolean))) as string[], [repos]);
 
-  const filtered = repos.filter((r) => {
+  const filtered = sortByDwellDesc(repos.filter((r) => {
     if (stageFilter && r.current_stage !== stageFilter) return false;
     if (domainFilter && r.domain !== domainFilter) return false;
     if (waveFilter && r.migration_wave !== waveFilter) return false;
     if (search && !r.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  });
+  }));
 
   return (
     <div className="min-h-screen bg-bg text-chalk max-w-[1180px] mx-auto px-6 py-12">
       <h1 className="font-display text-[28px] font-extrabold mb-6">Repos</h1>
 
-      <div className="flex gap-3 mb-4">
+      <div className="flex gap-3 mb-4 items-end">
         <div>
           <label htmlFor="domain-filter" className="block font-mono text-[10.5px] text-chalk-dim uppercase mb-1">
             Domain
@@ -88,6 +123,13 @@ export function RepoTablePage() {
             className="bg-bg-card border border-card-border rounded px-2 py-1 text-[12px]"
           />
         </div>
+        <button
+          type="button"
+          onClick={() => downloadCsv(filtered)}
+          className="self-end bg-bg-card border border-card-border rounded px-3 py-1.5 text-[12px] text-chalk-dim hover:text-chalk"
+        >
+          Export CSV
+        </button>
       </div>
 
       {stageFilter ? (
