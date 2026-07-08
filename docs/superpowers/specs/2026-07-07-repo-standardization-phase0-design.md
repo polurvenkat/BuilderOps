@@ -68,11 +68,11 @@ Naming-convention and environment/job-naming detection are both blocked on Build
 
 ## 6. Error handling & sync strategy
 
-- Each connector run writes a `SyncRun` row. A failure partway through does not roll back already-processed repos.
-- Per-check granularity: a failed API call for one repo flips only that repo's specific check to `unknown` — it never blocks or fails the repo's other checks.
+- Each connector run writes a `SyncRun` row. A failure partway through does not roll back already-processed repos **from prior runs** — the previous sync's data stays intact and is served as stale-but-valid until the next successful sync.
 - Staleness is surfaced, not hidden: "synced 12m ago" always shown; if the last `SyncRun` for a connector failed, a banner reads "GitHub sync failing since 2h ago, data may be stale."
 - Rate limits: connectors respect API rate-limit headers and back off/resume; this is why sync is scheduled rather than live-on-page-load.
 - Retry: a failed sync is retried on the next scheduled run — no separate backoff-retry loop needed for v1.
+- **Known v1 limitation (identified in the Phase 0 backend's final review, not yet fixed):** true per-repo/per-check failure isolation within a single sync run — "a failed API call for one repo flips only that repo's specific check to `unknown`, without failing the rest of that run" — is NOT implemented as of the initial backend build. The GitHub connector fetches checks in batches of up to 100 repos per GraphQL query; if a batch call fails, the exception propagates and the entire run rolls back and is marked `failed` (falling back to the previous run's data, per the point above — data is stale, not corrupted). The `unknown` status value is defined in the data model but not yet produced by any code path. This is an accepted v1 tradeoff given the batched-query architecture makes true per-repo isolation within a batch non-trivial; revisit if a future phase needs finer-grained partial-failure reporting (e.g. wrapping each batch, not each repo, in its own try/except and marking only that batch's repos `unknown`).
 
 ## 7. UI design
 
