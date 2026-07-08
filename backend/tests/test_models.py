@@ -73,6 +73,16 @@ def test_ado_snapshot_onboarding_log_and_sync_run():
     assert session.query(SyncRun).filter_by(connector="github").one().status == "running"
 
 
+def test_repo_e2e_test_plan_id_defaults_to_none():
+    session = make_session()
+    repo = Repo(name="checkout-web", github_url="https://github.com/acme/checkout-web")
+    session.add(repo)
+    session.commit()
+
+    fetched = session.query(Repo).filter_by(name="checkout-web").one()
+    assert fetched.e2e_test_plan_id is None
+
+
 def test_sqlite_in_memory_thread_safety():
     """
     Regression test: Verify that SQLite in-memory databases work across threads.
