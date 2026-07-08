@@ -20,7 +20,7 @@ def test_start_scheduler_registers_github_and_ado_jobs():
     scheduler = start_scheduler(app)
 
     job_ids = {job.id for job in scheduler.get_jobs()}
-    assert job_ids == {"github_sync", "ado_sync"}
+    assert job_ids == {"github_sync", "ado_sync", "ado_pipelines_sync"}
     scheduler.shutdown(wait=False)
 
 
