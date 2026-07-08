@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
@@ -179,3 +179,80 @@ def test_list_repos_includes_derived_stage_info():
     if body["is_stuck"]:
         assert body["stuck_reason"] is not None
         assert isinstance(body["dwell_days"], int)
+
+
+def test_list_repos_filters_by_stage():
+    app = create_app(make_test_settings())
+    session = app.state.sessionmaker()
+    onboarded_repo = Repo(name="stuck-in-migration", github_url="https://github.com/acme-org/stuck-in-migration")
+    standardized_repo = Repo(name="checkout-web", github_url="https://github.com/acme-org/checkout-web")
+    session.add_all([onboarded_repo, standardized_repo])
+    session.commit()
+    now = datetime.now(timezone.utc)
+    session.add(ReadinessCheck(
+        repo_id=onboarded_repo.id, stage_key="migrated_from_ado", status="fail", source="auto",
+        detail=None, updated_at=now,
+    ))
+    # Add passing checks to standardized_repo to move it past onboarded stage
+    for key in ["migrated_from_ado", "codeowners_assigned", "domain_assigned", "branch_protection", "readme_present"]:
+        session.add(ReadinessCheck(
+            repo_id=standardized_repo.id, stage_key=key, status="pass", source="auto",
+            detail=None, updated_at=now,
+        ))
+    session.commit()
+    session.close()
+
+    client = TestClient(app)
+    response = client.get("/repos", params={"stage": "onboarded"})
+
+    names = {r["name"] for r in response.json()}
+    assert names == {"stuck-in-migration"}
+
+
+def test_list_repos_filters_by_domain():
+    app = create_app(make_test_settings())
+    session = app.state.sessionmaker()
+    session.add_all([
+        Repo(name="growth-repo", github_url="https://github.com/acme-org/growth-repo", domain="Growth"),
+        Repo(name="platform-repo", github_url="https://github.com/acme-org/platform-repo", domain="Platform"),
+    ])
+    session.commit()
+    session.close()
+
+    client = TestClient(app)
+    response = client.get("/repos", params={"domain": "Growth"})
+
+    names = {r["name"] for r in response.json()}
+    assert names == {"growth-repo"}
+
+
+def test_list_repos_sorts_by_dwell_desc():
+    app = create_app(make_test_settings())
+    session = app.state.sessionmaker()
+    short_stuck = Repo(name="short-stuck", github_url="https://github.com/acme-org/short-stuck")
+    long_stuck = Repo(name="long-stuck", github_url="https://github.com/acme-org/long-stuck")
+    not_stuck = Repo(name="all-clear", github_url="https://github.com/acme-org/all-clear")
+    session.add_all([short_stuck, long_stuck, not_stuck])
+    session.commit()
+    now = datetime.now(timezone.utc)
+
+    def add_all_standardized_checks(repo, extra_status="pass", extra_changed=now):
+        for key in ["migrated_from_ado", "codeowners_assigned", "domain_assigned", "branch_protection", "readme_present"]:
+            status = extra_status if key == "codeowners_assigned" else "pass"
+            changed = extra_changed if key == "codeowners_assigned" else now
+            session.add(ReadinessCheck(
+                repo_id=repo.id, stage_key=key, status=status, source="auto",
+                detail=None, updated_at=now, status_changed_at=changed,
+            ))
+
+    add_all_standardized_checks(short_stuck, "fail", now - timedelta(days=3))
+    add_all_standardized_checks(long_stuck, "fail", now - timedelta(days=30))
+    add_all_standardized_checks(not_stuck, "pass", now)
+    session.commit()
+    session.close()
+
+    client = TestClient(app)
+    response = client.get("/repos", params={"sort": "dwell_desc"})
+
+    names_in_order = [r["name"] for r in response.json()]
+    assert names_in_order.index("long-stuck") < names_in_order.index("short-stuck") < names_in_order.index("all-clear")

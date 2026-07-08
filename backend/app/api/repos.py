@@ -40,9 +40,24 @@ def _to_repo_out(repo: Repo, session: Session) -> RepoOut:
 
 
 @router.get("", response_model=list[RepoOut])
-def list_repos(session: Session = Depends(get_db)):
-    repos = session.query(Repo).all()
-    return [_to_repo_out(r, session) for r in repos]
+def list_repos(
+    stage: str | None = None,
+    domain: str | None = None,
+    sort: str | None = None,
+    session: Session = Depends(get_db),
+):
+    query = session.query(Repo)
+    if domain is not None:
+        query = query.filter(Repo.domain == domain)
+    repos = [_to_repo_out(r, session) for r in query.all()]
+
+    if stage is not None:
+        repos = [r for r in repos if r.current_stage == stage]
+
+    if sort == "dwell_desc":
+        repos.sort(key=lambda r: (not r.is_stuck, -(r.dwell_days or 0)))
+
+    return repos
 
 
 @router.get("/{repo_id}", response_model=RepoOut)
