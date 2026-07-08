@@ -1,3 +1,4 @@
+import statistics
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.main import get_db
 from app.models import OnboardingLog, ReadinessCheck, Repo
-from app.schemas import OnboardingLogIn, OnboardingLogOut, RepoOut, RepoPatchIn, StageCheckOut
+from app.schemas import OnboardingLogIn, OnboardingLogOut, OnboardingSummaryOut, RepoOut, RepoPatchIn, StageCheckOut
 from app.services.readiness_store import upsert_readiness_check
 from app.services.stage import CheckStatus, derive_stage_info
 
@@ -111,3 +112,14 @@ def post_onboarding_log(repo_id: int, body: OnboardingLogIn, session: Session = 
     session.add(entry)
     session.commit()
     return entry
+
+
+@router.get("/{repo_id}/onboarding-log", response_model=OnboardingSummaryOut)
+def get_onboarding_log(repo_id: int, session: Session = Depends(get_db)):
+    repo = session.get(Repo, repo_id)
+    if repo is None:
+        raise HTTPException(status_code=404, detail="Repo not found")
+    entries = session.query(OnboardingLog).filter_by(repo_id=repo_id).order_by(OnboardingLog.logged_at).all()
+    hours = [e.hours for e in entries]
+    median_hours = statistics.median(hours) if hours else None
+    return OnboardingSummaryOut(entries=entries, median_hours=median_hours)

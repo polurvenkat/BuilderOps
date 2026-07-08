@@ -256,3 +256,38 @@ def test_list_repos_sorts_by_dwell_desc():
 
     names_in_order = [r["name"] for r in response.json()]
     assert names_in_order.index("long-stuck") < names_in_order.index("short-stuck") < names_in_order.index("all-clear")
+
+
+def test_get_onboarding_log_returns_empty_summary_when_none_logged():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    response = client.get(f"/repos/{repo_id}/onboarding-log")
+
+    assert response.status_code == 200
+    assert response.json() == {"entries": [], "median_hours": None}
+
+
+def test_get_onboarding_log_returns_entries_and_median():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+    client.post(f"/repos/{repo_id}/onboarding-log", json={"engineer_name": "Sam", "hours": 4.0})
+    client.post(f"/repos/{repo_id}/onboarding-log", json={"engineer_name": "Alex", "hours": 8.0})
+    client.post(f"/repos/{repo_id}/onboarding-log", json={"engineer_name": "Jo", "hours": 6.0})
+
+    response = client.get(f"/repos/{repo_id}/onboarding-log")
+
+    body = response.json()
+    assert len(body["entries"]) == 3
+    assert body["median_hours"] == 6.0
+
+
+def test_get_onboarding_log_404_for_missing_repo():
+    app = create_app(make_test_settings())
+    client = TestClient(app)
+
+    response = client.get("/repos/999/onboarding-log")
+
+    assert response.status_code == 404

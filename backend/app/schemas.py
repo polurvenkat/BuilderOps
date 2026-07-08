@@ -51,6 +51,11 @@ class OnboardingLogOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class OnboardingSummaryOut(BaseModel):
+    entries: list[OnboardingLogOut]
+    median_hours: float | None
+
+
 class SyncRunOut(BaseModel):
     id: int
     connector: str
