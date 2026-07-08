@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { StationBoard } from "../../../src/components/fleet/StationBoard";
@@ -66,19 +65,25 @@ describe("StationBoard", () => {
     expect(screen.getByText("41d here")).toBeInTheDocument();
   });
 
-  it("caps a column at 4 cards with a Show all expand toggle", async () => {
-    const user = userEvent.setup();
+  it("caps a column at 4 cards and links 'Show all N' to the Repos table filtered by stage", () => {
     const repos = Array.from({ length: 6 }, (_, i) =>
       makeRepo({ id: i + 1, name: `repo-${i + 1}`, current_stage: "standardized" })
     );
     renderBoard(repos);
 
     expect(screen.queryByText("repo-5")).not.toBeInTheDocument();
-    const showAll = screen.getByRole("button", { name: /show all 6/i });
+    const showAllLink = screen.getByRole("link", { name: /show all 6/i });
+    expect(showAllLink).toHaveAttribute("href", "/repos?stage=standardized");
+  });
 
-    await user.click(showAll);
+  it("does not show a 'Show all' link when a column has 5 or fewer repos", () => {
+    const repos = Array.from({ length: 5 }, (_, i) =>
+      makeRepo({ id: i + 1, name: `repo-${i + 1}`, current_stage: "onboarded" })
+    );
+    renderBoard(repos);
 
     expect(screen.getByText("repo-5")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /show all/i })).not.toBeInTheDocument();
   });
 
   it("links each repo card to its Journey page", () => {

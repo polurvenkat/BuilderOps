@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { RepoOut } from "../../api/types";
 import { RepoCard } from "./RepoCard";
 
@@ -8,6 +8,7 @@ interface RealColumnProps {
   code: string;
   title: string;
   color: string;
+  stageKey: string;
   repos: RepoOut[];
 }
 
@@ -20,11 +21,10 @@ function sortByDwellDesc(repos: RepoOut[]): RepoOut[] {
   });
 }
 
-function RealColumn({ code, title, color, repos }: RealColumnProps) {
-  const [expanded, setExpanded] = useState(false);
+function RealColumn({ code, title, color, stageKey, repos }: RealColumnProps) {
   const sorted = sortByDwellDesc(repos);
   const isCapped = repos.length > 5;
-  const visible = expanded || !isCapped ? sorted : sorted.slice(0, CAP);
+  const visible = isCapped ? sorted.slice(0, CAP) : sorted;
 
   return (
     <div className="bg-bg-card-locked rounded-xl flex-1 min-w-[220px] flex flex-col">
@@ -37,14 +37,13 @@ function RealColumn({ code, title, color, repos }: RealColumnProps) {
         {visible.map((repo) => (
           <RepoCard key={repo.id} repo={repo} />
         ))}
-        {isCapped && !expanded ? (
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
+        {isCapped ? (
+          <Link
+            to={`/repos?stage=${stageKey}`}
             className="text-center border border-dashed border-card-border rounded-[9px] p-2.5 font-mono text-[11.5px] text-chalk-dim hover:text-chalk hover:border-chalk-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold"
           >
             Show all {repos.length}
-          </button>
+          </Link>
         ) : null}
       </div>
     </div>
@@ -77,8 +76,8 @@ export function StationBoard({ repos }: { repos: RepoOut[] }) {
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-3 mb-5">
-      <RealColumn code="ON" title="Onboarded" color="#A79AE8" repos={onboarded} />
-      <RealColumn code="ST" title="Standardized" color="#A79AE8" repos={standardized} />
+      <RealColumn code="ON" title="Onboarded" color="#A79AE8" stageKey="onboarded" repos={onboarded} />
+      <RealColumn code="ST" title="Standardized" color="#A79AE8" stageKey="standardized" repos={standardized} />
       <EmptyColumn
         code="PI"
         title="Piped"
