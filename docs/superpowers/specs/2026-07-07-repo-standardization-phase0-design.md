@@ -53,6 +53,8 @@ Internally, the underlying requirements doc organizes work into three named trac
 - **AdoRepoSnapshot**: raw list from the ADO connector v0 (`name`, `last_activity`) — used only to compute the migration-reconciliation diff.
 - **OnboardingLog**: `repo_id`, `engineer_name`, `hours`, `logged_at` — manual entries; no automated telemetry source exists yet (would come from the setup-script itself, in a future phase).
 - **SyncRun**: `connector`, `started_at`, `finished_at`, `status`, `error` — lets the UI show "GitHub sync failing since 2h ago" instead of silently serving stale data.
+- **ReadinessCheck.status_changed_at** (addition, needed for the fleet landing page's dwell-time feature): a second timestamp, distinct from `updated_at`. `updated_at` is touched on every sync regardless of whether `status` changed; `status_changed_at` only updates when `status` actually differs from the prior value (set equal to `updated_at` on first creation). Dwell time = `now - status_changed_at` of the earliest currently-blocking check. Without this distinction, dwell time would incorrectly reset every sync cycle (every 4h) instead of reflecting how long a repo has actually been stuck.
+- **Current stage (derived, not stored):** a repo's current station = the earliest stage in journey order (Onboarded → Standardized → Piped → Tested → Paved Road) where it has a check with `status="fail"` (a `pending_convention` status is treated as non-blocking, consistent with `naming_standardized` never gating Standardized). **Phase 0 clamps this derivation at Standardized** — since Piped/Tested have zero real `ReadinessCheck` rows in this phase (no connector produces them yet), a repo that clears every Standardized check is NOT advanced to a fictitious "Piped" or "Paved Road" state it can't be verified against. It simply stays shown as cleared-and-waiting at Standardized until a future phase's connector gives it real Piped data. This computation belongs server-side (on `RepoOut`, see below), not duplicated in frontend code.
 
 ### Stage keys, grouped into the 5 journey cards
 
@@ -78,8 +80,20 @@ Naming-convention and environment/job-naming detection are both blocked on Build
 
 Three screens, all under the "journey" framing (no Track 1/2/3 language anywhere):
 
-### 7.1 Overview
-Org-wide rollup: a funnel showing how many repos have reached each of the 5 stages, a domain breakdown (worst-first, not alphabetical), a migration-wave rollup (engagement stage, separate from technical readiness), and a "Needs Attention" worklist sorted by earliest stuck stage rather than a flat score.
+### 7.1 Repo Fleet (landing page — "repo-fleet-landing.html" reference build)
+The fleet-wide overview, answering "where are all our repos right now, and what's stuck" — a kanban-style **station board**, one column per journey stage (Onboarded → Standardized → Piped → Tested → Paved Road), not a flat list. Repos sit in exactly one column: their current stage (see the "current stage" derivation rule in §5). Color coding for track ownership is identical to the Repo Journey page — same hex values, same meaning, no T1/T2/T3 text anywhere except the legend.
+
+- **Hero**: eyebrow + h1 "Repo fleet" + one-line tagline.
+- **Stat strip**: 4 tiles — Repos tracked (total), Paved (count at final stage), **Stuck >14 days** (a clickable toggle, not static text — reveals the stuck-now panel), Most crowded station (column with the highest count, with a qualifying hint when a spike is a known transient event so it isn't misread as chronic).
+- **Legend**: 4 chips, function-named ("Repo standards," "CI/CD & environments," "E2E & load testing," "Paved — ready to ship") — never internal track numbers.
+- **Stuck-now panel**: hidden by default (`hidden` attribute, not just `display:none`, so it's correctly out of the accessibility tree when closed); toggled via the stat tile (`aria-expanded`/`aria-controls`). Every stuck repo fleet-wide, sorted by dwell time descending (worst first) — a viewer shouldn't have to scan five columns to find the worst offender. Each row: colored dot for the stuck stage, repo name, plain-language reason + "waiting on [team]" (sourced from `Repo.team`, never free text), dwell time. Full-width link to that repo's Journey page.
+- **Station board**: 5 columns, horizontally scrollable as a unit (`overflow-x: auto`, never wraps to a second row — a deliberate kanban convention). Column header: stage code, title, live count, 3px top border in the stage's track color.
+- **Repo card**: name, meta row (owning team — never internal track names — + dwell time), and if stuck, a bordered-off flag with a specific plain-language reason (e.g. "Missing E2E coverage for checkout flow," never "in progress"). Entire card links to that repo's Journey page.
+- **Capped columns**: columns over 5 repos show only the top 4 (sorted longest-dwelling-first, consistent with the stuck panel) plus a "View all N repos →" row linking to §7.4's searchable table, pre-filtered to that stage — never render hundreds of cards inline.
+- **Empty column state**: dashed border, centered, honest mono text explaining why it's empty and what populates it. In Phase 0 specifically, **Piped and Tested will always render this empty state** (not because repos have "drained," but because those connectors don't exist yet) — text should say so plainly, e.g. "Not live yet — unlocks once the CI/CD connector ships," consistent with the "Locked" language used on the Repo Journey page.
+- **Design tokens**: identical to §7.2's Repo Journey page (same hex values, same Sora/Inter/IBM Plex Mono type roles) — this page is wider (max-width 1180px vs. 760px) to fit five columns side by side, and single-theme dark like the Journey page (no light-mode variant — this is a deliberate, committed aesthetic, not an omission).
+- **Accessibility**: color is never the only "stuck" signal — the flag section always includes explanatory text. All animation guarded by `prefers-reduced-motion`. Real `<button>`/`<a>` elements throughout, visible gold focus outline.
+- **Resolved v1 decisions** (this design explicitly flagged these as needing a decision, not a guess): sort order for capped previews and the stuck panel is longest-dwelling-first; the stuck threshold is a single global 14-day placeholder for v1 (per-stage thresholds deferred); "waiting on [team]" reads from `Repo.team`; dwell-time freshness is bounded by the existing sync cadence (4h GitHub / 1d ADO) — acceptable for v1, revisit if a future phase needs near-real-time station movement.
 
 ### 7.2 Repo Journey (signature page — "repo-journey-5cards.html" reference build)
 A per-repo page, styled as a transit map: three colored lines (Standards/purple, Pipeline/teal, Testing/orange) converge into a gold "Paved Road" terminus. Track names appear as text only in the legend and diagram line labels — everywhere else (roundels, badges, card borders), track ownership is color-only.
@@ -97,7 +111,7 @@ A per-repo page, styled as a transit map: three colored lines (Standards/purple,
 A small, separate section on the Repo Journey page (not part of the transit visualization itself) where BuilderOps edits the fields that aren't auto-derivable: `domain`, `migration_wave`, and the Dockerization eligibility flag, plus a form to log onboarding time entries (engineer, hours, date) with a running median shown alongside. This is the same manual-entry pattern used everywhere a field has no data source yet — it's what feeds the future onboarding-time success metric.
 
 ### 7.4 Repos (searchable table)
-The exhaustive fallback: filter by domain/wave, sort by earliest stuck stage, one column per stage status, CSV export, row click opens the Repo Journey page for that repo.
+The exhaustive fallback: filter by domain/wave, sort by earliest stuck stage, one column per stage status, CSV export, row click opens the Repo Journey page for that repo. Also serves as the destination for the Repo Fleet page's "View all N repos →" rows, pre-filtered to the stage the user clicked from.
 
 ### 7.5 What's hardcoded in the reference build vs. what becomes data-driven
 
@@ -110,6 +124,12 @@ The exhaustive fallback: filter by domain/wave, sort by earliest stuck stage, on
 | Blocker callout text | Hardcoded | The specific failing check's detail from `ReadinessCheck.detail` |
 | Convergence-line progress % | Hardcoded per line | Fraction of that card's sub-checks passing |
 | Traveled bar height | Computed from DOM at runtime | Same approach — no change needed |
+| Repo Fleet: counts per column, repo cards | Hardcoded HTML | Queried from `/repos`, grouped by each repo's derived current-stage field |
+| Repo Fleet: stuck flag + reason | Hardcoded text | Derived from the repo's blocking `ReadinessCheck.detail` |
+| Repo Fleet: dwell time | Hardcoded string | `now - status_changed_at` of the earliest currently-failing check (see §5) |
+| Repo Fleet: "most crowded station" stat | Hardcoded | Computed as the column with the highest live count |
+| Repo Fleet: stuck-panel row order | Hardcoded | Sorted by dwell time descending from live data |
+| Repo Fleet: "View all" link | `href="#"` placeholder | Routes to §7.4 filtered to that stage |
 
 ## 8. Open questions (must resolve before the dependent feature is built)
 
