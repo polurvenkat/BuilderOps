@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.models import Repo, ReadinessCheck
+from app.models import PipelineLink, Repo, ReadinessCheck
 
 
 def make_test_settings():
@@ -351,3 +352,75 @@ def test_patch_repo_can_set_dockerize_eligible_false():
     repo = session.get(Repo, repo_id)
     assert repo.dockerize_eligible is False
     session.close()
+
+
+def test_get_pipeline_status_404_when_repo_has_no_pipeline_link():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    response = client.get(f"/repos/{repo_id}/pipeline-status")
+
+    assert response.status_code == 404
+
+
+def test_get_pipeline_status_404_for_missing_repo():
+    app = create_app(make_test_settings())
+    client = TestClient(app)
+
+    response = client.get("/repos/999/pipeline-status")
+
+    assert response.status_code == 404
+
+
+def test_get_pipeline_status_returns_live_stage_breakdown(monkeypatch):
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    session = app.state.sessionmaker()
+    session.add(PipelineLink(
+        repo_id=repo_id, ado_pipeline_id=7, ado_pipeline_name="checkout-web-ci", is_yaml=True,
+    ))
+    session.commit()
+    session.close()
+
+    from app.connectors.ado_pipelines_connector import PipelineStageStatus
+
+    async def fake_fetch_pipeline_run_status(client, org, project, pat, pipeline_id):
+        assert pipeline_id == 7
+        return [
+            PipelineStageStatus(name="Build", status="succeeded"),
+            PipelineStageStatus(name="UAT", status="waiting_approval", pending_approval_description="Needs sign-off"),
+        ]
+
+    monkeypatch.setattr("app.api.repos.fetch_pipeline_run_status", fake_fetch_pipeline_run_status)
+
+    client = TestClient(app)
+    response = client.get(f"/repos/{repo_id}/pipeline-status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stages"] == [
+        {"name": "Build", "status": "succeeded", "pending_approval_description": None},
+        {"name": "UAT", "status": "waiting_approval", "pending_approval_description": "Needs sign-off"},
+    ]
+
+
+def test_get_pipeline_status_502_when_ado_call_fails(monkeypatch):
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    session = app.state.sessionmaker()
+    session.add(PipelineLink(
+        repo_id=repo_id, ado_pipeline_id=7, ado_pipeline_name="checkout-web-ci", is_yaml=True,
+    ))
+    session.commit()
+    session.close()
+
+    async def failing_fetch(client, org, project, pat, pipeline_id):
+        raise httpx.HTTPError("boom")
+
+    monkeypatch.setattr("app.api.repos.fetch_pipeline_run_status", failing_fetch)
+
+    client = TestClient(app)
+    response = client.get(f"/repos/{repo_id}/pipeline-status")
+
+    assert response.status_code == 502

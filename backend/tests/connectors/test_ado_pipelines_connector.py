@@ -3,10 +3,12 @@ import pytest
 
 from app.connectors.ado_pipelines_connector import (
     PipelineLinkData,
+    PipelineStageStatus,
     ReleaseDefinitionData,
     fetch_pipeline_links,
     fetch_release_definitions,
     fetch_environment_checks,
+    fetch_pipeline_run_status,
 )
 
 PIPELINES_LIST_RESPONSE = {"value": [{"id": 7, "name": "checkout-web-ci"}]}
@@ -120,3 +122,53 @@ async def test_fetch_environment_checks_omits_unmatched_environment_names():
 
     assert gates == {"uat": True}
     assert "dev" not in gates and "qa" not in gates and "prod" not in gates
+
+
+RUNS_RESPONSE = {"value": [{"id": 555, "createdDate": "2026-07-08T10:00:00Z"}]}
+
+TIMELINE_RESPONSE = {
+    "records": [
+        {"name": "Build", "type": "Stage", "order": 1, "state": "completed", "result": "succeeded"},
+        {"name": "DEV", "type": "Stage", "order": 2, "state": "completed", "result": "succeeded"},
+        {"name": "QA", "type": "Stage", "order": 3, "state": "inProgress", "result": None},
+        {
+            "name": "UAT", "type": "Stage", "order": 4, "state": "pending", "result": None,
+            "checkpoint": {"pendingApprovals": [{"description": "Waiting on release manager sign-off"}]},
+        },
+        {"name": "Prod", "type": "Stage", "order": 5, "state": "pending", "result": None},
+        {"name": "Publish artifacts", "type": "Job", "order": 6, "state": "completed", "result": "succeeded"},
+    ]
+}
+
+
+@pytest.mark.asyncio
+async def test_fetch_pipeline_run_status_maps_stages_in_order():
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = str(request.url.path)
+        if path.endswith("/runs"):
+            return httpx.Response(200, json=RUNS_RESPONSE)
+        return httpx.Response(200, json=TIMELINE_RESPONSE)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
+        stages = await fetch_pipeline_run_status(client, org="acme-ado", project="acme-project", pat="ado-pat", pipeline_id=7)
+
+    assert stages == [
+        PipelineStageStatus(name="Build", status="succeeded"),
+        PipelineStageStatus(name="DEV", status="succeeded"),
+        PipelineStageStatus(name="QA", status="in_progress"),
+        PipelineStageStatus(name="UAT", status="waiting_approval", pending_approval_description="Waiting on release manager sign-off"),
+        PipelineStageStatus(name="Prod", status="not_started"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_fetch_pipeline_run_status_returns_empty_list_when_no_runs_exist():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"value": []})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
+        stages = await fetch_pipeline_run_status(client, org="acme-ado", project="acme-project", pat="ado-pat", pipeline_id=7)
+
+    assert stages == []

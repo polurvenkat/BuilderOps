@@ -78,3 +78,49 @@ async def fetch_environment_checks(
         checks_resp.raise_for_status()
         result[target_name] = len(checks_resp.json()["value"]) > 0
     return result
+
+
+@dataclass
+class PipelineStageStatus:
+    name: str
+    status: str
+    pending_approval_description: str | None = None
+
+
+async def fetch_pipeline_run_status(
+    client: httpx.AsyncClient, org: str, project: str, pat: str, pipeline_id: int
+) -> list[PipelineStageStatus]:
+    headers = {"Authorization": _basic_auth_header(pat)}
+    runs_resp = await client.get(
+        f"/{project}/_apis/pipelines/{pipeline_id}/runs", params={"api-version": "7.1"}, headers=headers,
+    )
+    runs_resp.raise_for_status()
+    runs = runs_resp.json()["value"]
+    if not runs:
+        return []
+    latest_run = max(runs, key=lambda r: r["createdDate"])
+
+    timeline_resp = await client.get(
+        f"/{project}/_apis/build/builds/{latest_run['id']}/timeline", params={"api-version": "7.1"}, headers=headers,
+    )
+    timeline_resp.raise_for_status()
+    records = timeline_resp.json()["records"]
+    stage_records = sorted((r for r in records if r["type"] == "Stage"), key=lambda r: r.get("order", 0))
+
+    stages: list[PipelineStageStatus] = []
+    for record in stage_records:
+        pending_approvals = (record.get("checkpoint") or {}).get("pendingApprovals") or []
+        if pending_approvals:
+            stages.append(PipelineStageStatus(
+                name=record["name"], status="waiting_approval",
+                pending_approval_description=pending_approvals[0]["description"],
+            ))
+        elif record["state"] == "completed" and record["result"] == "succeeded":
+            stages.append(PipelineStageStatus(name=record["name"], status="succeeded"))
+        elif record["state"] == "completed" and record["result"] == "failed":
+            stages.append(PipelineStageStatus(name=record["name"], status="failed"))
+        elif record["state"] == "inProgress":
+            stages.append(PipelineStageStatus(name=record["name"], status="in_progress"))
+        else:
+            stages.append(PipelineStageStatus(name=record["name"], status="not_started"))
+    return stages

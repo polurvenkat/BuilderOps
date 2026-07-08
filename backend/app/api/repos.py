@@ -1,12 +1,23 @@
 import statistics
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.connectors.ado_pipelines_connector import fetch_pipeline_run_status
 from app.main import get_db
-from app.models import OnboardingLog, ReadinessCheck, Repo
-from app.schemas import OnboardingLogIn, OnboardingLogOut, OnboardingSummaryOut, RepoOut, RepoPatchIn, StageCheckOut
+from app.models import OnboardingLog, PipelineLink, ReadinessCheck, Repo
+from app.schemas import (
+    OnboardingLogIn,
+    OnboardingLogOut,
+    OnboardingSummaryOut,
+    PipelineStageStatusOut,
+    PipelineStatusOut,
+    RepoOut,
+    RepoPatchIn,
+    StageCheckOut,
+)
 from app.services.readiness_store import upsert_readiness_check
 from app.services.stage import CheckStatus, derive_stage_info
 
@@ -139,3 +150,30 @@ def get_onboarding_log(repo_id: int, session: Session = Depends(get_db)):
     hours = [e.hours for e in entries]
     median_hours = statistics.median(hours) if hours else None
     return OnboardingSummaryOut(entries=entries, median_hours=median_hours)
+
+
+@router.get("/{repo_id}/pipeline-status", response_model=PipelineStatusOut)
+async def get_pipeline_status(repo_id: int, request: Request, session: Session = Depends(get_db)):
+    repo = session.get(Repo, repo_id)
+    if repo is None:
+        raise HTTPException(status_code=404, detail="Repo not found")
+    link = session.query(PipelineLink).filter_by(repo_id=repo_id).one_or_none()
+    if link is None:
+        raise HTTPException(status_code=404, detail="Repo has no linked pipeline")
+
+    settings = request.app.state.settings
+    try:
+        async with httpx.AsyncClient(base_url=f"https://dev.azure.com/{settings.ado_org}", timeout=30.0) as client:
+            stages = await fetch_pipeline_run_status(
+                client, org=settings.ado_org, project=settings.ado_project, pat=settings.ado_pat,
+                pipeline_id=link.ado_pipeline_id,
+            )
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Couldn't reach Azure DevOps")
+
+    return PipelineStatusOut(stages=[
+        PipelineStageStatusOut(
+            name=s.name, status=s.status, pending_approval_description=s.pending_approval_description,
+        )
+        for s in stages
+    ])

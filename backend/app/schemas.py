@@ -57,6 +57,18 @@ class OnboardingSummaryOut(BaseModel):
     median_hours: float | None
 
 
+class PipelineStageStatusOut(BaseModel):
+    name: str
+    status: str
+    pending_approval_description: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class PipelineStatusOut(BaseModel):
+    stages: list[PipelineStageStatusOut]
+
+
 class SyncRunOut(BaseModel):
     id: int
     connector: str
