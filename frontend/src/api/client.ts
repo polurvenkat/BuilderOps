@@ -3,6 +3,7 @@ import type {
   OnboardingLogIn,
   OnboardingLogOut,
   OnboardingSummaryOut,
+  PipelineStatusOut,
   RepoOut,
   RepoPatchIn,
 } from "./types";
@@ -59,6 +60,14 @@ export async function postOnboardingLog(id: number, body: OnboardingLogIn): Prom
   });
   if (!response.ok) {
     throw new Error(`Failed to log onboarding time for repo ${id}: HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function getPipelineStatus(id: number): Promise<PipelineStatusOut> {
+  const response = await fetch(`${BASE_URL}/repos/${id}/pipeline-status`);
+  if (!response.ok) {
+    throw new Error(`Failed to get pipeline status for repo ${id}: HTTP ${response.status}`);
   }
   return response.json();
 }

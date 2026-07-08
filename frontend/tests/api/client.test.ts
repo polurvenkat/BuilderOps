@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getOnboardingLog, getRepo, listRepos, patchRepo, postOnboardingLog } from "../../src/api/client";
+import { getOnboardingLog, getPipelineStatus, getRepo, listRepos, patchRepo, postOnboardingLog } from "../../src/api/client";
 import type { RepoOut } from "../../src/api/types";
 
 const SAMPLE_REPO: RepoOut = {
@@ -133,5 +133,24 @@ describe("postOnboardingLog", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 }));
 
     await expect(postOnboardingLog(1, { engineer_name: "Sam", hours: 4.5 })).rejects.toThrow(/500/);
+  });
+});
+
+describe("getPipelineStatus", () => {
+  it("fetches the live pipeline status for a repo", async () => {
+    const status = { stages: [{ name: "Build", status: "succeeded", pending_approval_description: null }] };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => status });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getPipelineStatus(1);
+
+    expect(result).toEqual(status);
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/repos\/1\/pipeline-status$/);
+  });
+
+  it("throws a descriptive error on a non-OK response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 502 }));
+
+    await expect(getPipelineStatus(1)).rejects.toThrow(/502/);
   });
 });
