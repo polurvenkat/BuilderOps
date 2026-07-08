@@ -12,6 +12,11 @@ from app.services.stage import CheckStatus, derive_stage_info
 router = APIRouter(prefix="/repos", tags=["repos"])
 
 
+def _aware(dt):
+    """Normalize datetime to timezone-aware UTC."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
 def _to_repo_out(repo: Repo, session: Session) -> RepoOut:
     checks = session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()
     stages = {
@@ -19,7 +24,7 @@ def _to_repo_out(repo: Repo, session: Session) -> RepoOut:
         for c in checks
     }
     stage_info = derive_stage_info(
-        checks={c.stage_key: CheckStatus(status=c.status, status_changed_at=c.status_changed_at) for c in checks},
+        checks={c.stage_key: CheckStatus(status=c.status, status_changed_at=_aware(c.status_changed_at)) for c in checks},
         team=repo.team,
         now=datetime.now(timezone.utc),
     )
