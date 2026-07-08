@@ -4,6 +4,7 @@ from datetime import datetime
 STAGE_ORDER: list[tuple[str, list[str]]] = [
     ("onboarded", ["migrated_from_ado"]),
     ("standardized", ["codeowners_assigned", "domain_assigned", "branch_protection", "readme_present"]),
+    ("piped", ["pipeline_linked", "pipeline_is_yaml", "environment_gates_configured", "dockerized"]),
 ]
 
 REASON_TEXT: dict[str, str] = {
@@ -12,6 +13,10 @@ REASON_TEXT: dict[str, str] = {
     "domain_assigned": "No domain assigned",
     "branch_protection": "Missing branch protection",
     "readme_present": "Missing README",
+    "pipeline_linked": "No pipeline linked in Azure DevOps",
+    "pipeline_is_yaml": "Pipeline hasn't migrated to YAML",
+    "environment_gates_configured": "Missing an approval/check on UAT or Prod",
+    "dockerized": "Dockerfile missing for a dockerize-eligible repo",
 }
 
 
@@ -56,4 +61,4 @@ def derive_stage_info(checks: dict[str, CheckStatus], team: str | None, now: dat
             stuck_reason=f"{REASON_TEXT[oldest_key]} — {_waiting_on(team)}",
         )
 
-    return StageInfo(current_stage="standardized", is_stuck=False, dwell_days=None, stuck_reason=None)
+    return StageInfo(current_stage=STAGE_ORDER[-1][0], is_stuck=False, dwell_days=None, stuck_reason=None)
