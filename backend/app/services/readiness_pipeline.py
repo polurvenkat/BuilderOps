@@ -15,8 +15,8 @@ def compute_pipeline_readiness_checks(
 ) -> list[ReadinessCheck]:
     pipeline_linked_status = "pass" if has_pipeline_link else "fail"
 
-    if has_pipeline_link and is_yaml:
-        pipeline_is_yaml_status = "pass"
+    if has_pipeline_link:
+        pipeline_is_yaml_status = "pass" if is_yaml else "fail"
     elif has_classic_release_def:
         pipeline_is_yaml_status = "fail"
     else:

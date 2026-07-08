@@ -42,6 +42,15 @@ def test_pipeline_is_yaml_fails_when_classic_release_definition_found_instead():
     assert is_yaml.status == "fail"
 
 
+def test_pipeline_is_yaml_fails_when_linked_pipeline_is_not_yaml():
+    checks = compute_pipeline_readiness_checks(
+        repo_id=1, has_pipeline_link=True, is_yaml=False, has_classic_release_def=False,
+        environment_gates={}, now=NOW,
+    )
+    is_yaml = next(c for c in checks if c.stage_key == "pipeline_is_yaml")
+    assert is_yaml.status == "fail"
+
+
 def test_pipeline_is_yaml_unknown_when_neither_yaml_nor_classic_found():
     checks = compute_pipeline_readiness_checks(
         repo_id=1, has_pipeline_link=False, is_yaml=None, has_classic_release_def=False,
