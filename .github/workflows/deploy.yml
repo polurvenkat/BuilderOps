@@ -8,11 +8,11 @@ on:
   workflow_dispatch:
     inputs:
       frontend_tag:
-        description: "Frontend image tag to deploy (leave blank to recompute the current one)"
-        required: false
+        description: "Frontend image tag to deploy — required, find existing tags with `az acr repository show-tags`"
+        required: true
       backend_tag:
-        description: "Backend image tag to deploy (leave blank to recompute the current one)"
-        required: false
+        description: "Backend image tag to deploy — required, find existing tags with `az acr repository show-tags`"
+        required: true
 
 permissions:
   contents: read
@@ -71,7 +71,7 @@ jobs:
           resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
           location: ${{ vars.AZURE_LOCATION }}
       - id: tag
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.backend_tag == ''
+        if: github.event_name != 'workflow_dispatch'
         uses: ./.github/actions/compute-tag
         with:
           version-file: backend/pyproject.toml
@@ -99,12 +99,16 @@ jobs:
               --target-port 8000 \
               --ingress external \
               --system-assigned \
+              --registry-server "${{ steps.acr.outputs.login-server }}" \
+              --registry-identity system \
               --env-vars AZURE_KEY_VAULT_URL=${{ vars.AZURE_KEY_VAULT_URL }} GITHUB_ORG=${{ vars.GITHUB_ORG }} ADO_ORG=${{ vars.ADO_ORG }} ADO_PROJECT=${{ vars.ADO_PROJECT }}
             PRINCIPAL_ID=$(az containerapp show --name ${{ vars.ACA_BACKEND_APP }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query identity.principalId -o tsv)
             az keyvault set-policy \
               --name ${{ vars.AZURE_KEY_VAULT_NAME }} \
               --object-id "$PRINCIPAL_ID" \
               --secret-permissions get list
+            ACR_ID=$(az acr show --name ${{ vars.ACR_NAME }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query id -o tsv)
+            az role assignment create --assignee "$PRINCIPAL_ID" --role AcrPull --scope "$ACR_ID"
           fi
       - name: Report backend URL
         run: |
@@ -131,7 +135,7 @@ jobs:
           resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
           location: ${{ vars.AZURE_LOCATION }}
       - id: tag
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.frontend_tag == ''
+        if: github.event_name != 'workflow_dispatch'
         uses: ./.github/actions/compute-tag
         with:
           version-file: frontend/package.json
@@ -157,5 +161,11 @@ jobs:
               --environment ${{ vars.ACA_ENV_NAME }} \
               --image "$IMAGE" \
               --target-port 80 \
-              --ingress external
+              --ingress external \
+              --system-assigned \
+              --registry-server "${{ steps.acr.outputs.login-server }}" \
+              --registry-identity system
+            PRINCIPAL_ID=$(az containerapp show --name ${{ vars.ACA_FRONTEND_APP }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query identity.principalId -o tsv)
+            ACR_ID=$(az acr show --name ${{ vars.ACR_NAME }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query id -o tsv)
+            az role assignment create --assignee "$PRINCIPAL_ID" --role AcrPull --scope "$ACR_ID"
           fi

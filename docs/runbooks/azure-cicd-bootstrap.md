@@ -69,8 +69,8 @@ The frontend bakes `VITE_API_BASE_URL` in at Docker build time, but the
 backend's Container Apps FQDN doesn't exist until it's deployed once:
 
 1. Push to `main` (or merge a PR into it). `build-and-test.yml` builds and
-   pushes both images; `deploy.yml` then runs `ensure-infra` and
-   `deploy-backend` and `deploy-frontend` in parallel. On this first run,
+   pushes both images; `deploy.yml` then runs `ensure-infra` first, followed
+   by `deploy-backend` and `deploy-frontend` in parallel. On this first run,
    the frontend will be built with whatever `VITE_API_BASE_URL` was set to
    (blank, if you haven't done step 4 yet) — this is expected and corrected
    in the next step.
@@ -83,3 +83,22 @@ backend's Container Apps FQDN doesn't exist until it's deployed once:
 
 Every deploy after this is fully automatic — the backend's FQDN doesn't
 change across redeploys.
+
+## 5. Manual redeploy of a specific tag
+
+`deploy.yml` can also be triggered manually via `workflow_dispatch` — for
+example, to roll back to a previous image or re-deploy after a failed run.
+Manual dispatch now requires an explicit tag for whichever app you're
+redeploying; there's no "leave blank to recompute the current one" fallback
+(the recompute logic relies on `build-and-test.yml`'s run number, which
+`workflow_dispatch` has no way to determine on its own).
+
+1. Find existing tags in the registry:
+
+   ```bash
+   az acr repository show-tags --name <ACR_NAME> --repository builderops-backend --output table
+   az acr repository show-tags --name <ACR_NAME> --repository builderops-frontend --output table
+   ```
+
+2. In the GitHub UI, go to the Actions tab → **Deploy to ACA** → **Run
+   workflow**, and supply the desired `backend_tag` and/or `frontend_tag`.
