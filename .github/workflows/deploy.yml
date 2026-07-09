@@ -51,3 +51,111 @@ jobs:
           else
             echo "Container Apps Environment '${{ vars.ACA_ENV_NAME }}' already exists."
           fi
+
+  deploy-backend:
+    needs: ensure-infra
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - id: acr
+        uses: ./.github/actions/ensure-acr
+        with:
+          acr-name: ${{ vars.ACR_NAME }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          location: ${{ vars.AZURE_LOCATION }}
+      - id: tag
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.backend_tag == ''
+        uses: ./.github/actions/compute-tag
+        with:
+          version-file: backend/pyproject.toml
+          file-type: pyproject
+          run-number: ${{ github.event.workflow_run.run_number || github.run_number }}
+      - id: resolve
+        run: echo "tag=${{ github.event.inputs.backend_tag || steps.tag.outputs.tag }}" >> "$GITHUB_OUTPUT"
+      - name: Deploy or update backend Container App
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.acr.outputs.login-server }}/builderops-backend:${{ steps.resolve.outputs.tag }}"
+          if az containerapp show --name ${{ vars.ACA_BACKEND_APP }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} >/dev/null 2>&1; then
+            echo "Updating existing backend Container App with $IMAGE"
+            az containerapp update \
+              --name ${{ vars.ACA_BACKEND_APP }} \
+              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+              --image "$IMAGE"
+          else
+            echo "Creating backend Container App with $IMAGE"
+            az containerapp create \
+              --name ${{ vars.ACA_BACKEND_APP }} \
+              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+              --environment ${{ vars.ACA_ENV_NAME }} \
+              --image "$IMAGE" \
+              --target-port 8000 \
+              --ingress external \
+              --system-assigned \
+              --env-vars AZURE_KEY_VAULT_URL=${{ vars.AZURE_KEY_VAULT_URL }} GITHUB_ORG=${{ vars.GITHUB_ORG }} ADO_ORG=${{ vars.ADO_ORG }} ADO_PROJECT=${{ vars.ADO_PROJECT }}
+            PRINCIPAL_ID=$(az containerapp show --name ${{ vars.ACA_BACKEND_APP }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query identity.principalId -o tsv)
+            az keyvault set-policy \
+              --name ${{ vars.AZURE_KEY_VAULT_NAME }} \
+              --object-id "$PRINCIPAL_ID" \
+              --secret-permissions get list
+          fi
+      - name: Report backend URL
+        run: |
+          FQDN=$(az containerapp show --name ${{ vars.ACA_BACKEND_APP }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Backend URL: https://${FQDN}" >> "$GITHUB_STEP_SUMMARY"
+          echo "If this is the first-ever deploy, set the VITE_API_BASE_URL repo variable to https://${FQDN} and re-run build-and-test so the frontend bakes in the real URL." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-frontend:
+    needs: ensure-infra
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - id: acr
+        uses: ./.github/actions/ensure-acr
+        with:
+          acr-name: ${{ vars.ACR_NAME }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          location: ${{ vars.AZURE_LOCATION }}
+      - id: tag
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.frontend_tag == ''
+        uses: ./.github/actions/compute-tag
+        with:
+          version-file: frontend/package.json
+          file-type: npm
+          run-number: ${{ github.event.workflow_run.run_number || github.run_number }}
+      - id: resolve
+        run: echo "tag=${{ github.event.inputs.frontend_tag || steps.tag.outputs.tag }}" >> "$GITHUB_OUTPUT"
+      - name: Deploy or update frontend Container App
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.acr.outputs.login-server }}/builderops-frontend:${{ steps.resolve.outputs.tag }}"
+          if az containerapp show --name ${{ vars.ACA_FRONTEND_APP }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} >/dev/null 2>&1; then
+            echo "Updating existing frontend Container App with $IMAGE"
+            az containerapp update \
+              --name ${{ vars.ACA_FRONTEND_APP }} \
+              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+              --image "$IMAGE"
+          else
+            echo "Creating frontend Container App with $IMAGE"
+            az containerapp create \
+              --name ${{ vars.ACA_FRONTEND_APP }} \
+              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+              --environment ${{ vars.ACA_ENV_NAME }} \
+              --image "$IMAGE" \
+              --target-port 80 \
+              --ingress external
+          fi
