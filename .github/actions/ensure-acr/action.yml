@@ -1,0 +1,35 @@
+name: Ensure ACR exists
+description: Checks whether the given Azure Container Registry exists and creates it (Basic SKU) if not. Requires an already-authenticated az session.
+inputs:
+  acr-name:
+    required: true
+    description: Name of the Azure Container Registry
+  resource-group:
+    required: true
+    description: Resource group the registry lives in (or should be created in)
+  location:
+    required: true
+    description: Azure region to create the registry in, if it doesn't exist
+outputs:
+  login-server:
+    description: The registry's login server hostname
+    value: ${{ steps.ensure.outputs.login-server }}
+runs:
+  using: composite
+  steps:
+    - id: ensure
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! az acr show --name "${{ inputs.acr-name }}" --resource-group "${{ inputs.resource-group }}" >/dev/null 2>&1; then
+          echo "ACR '${{ inputs.acr-name }}' not found in '${{ inputs.resource-group }}', creating..."
+          az acr create \
+            --name "${{ inputs.acr-name }}" \
+            --resource-group "${{ inputs.resource-group }}" \
+            --location "${{ inputs.location }}" \
+            --sku Basic >/dev/null
+        else
+          echo "ACR '${{ inputs.acr-name }}' already exists."
+        fi
+        LOGIN_SERVER=$(az acr show --name "${{ inputs.acr-name }}" --query loginServer -o tsv)
+        echo "login-server=${LOGIN_SERVER}" >> "$GITHUB_OUTPUT"

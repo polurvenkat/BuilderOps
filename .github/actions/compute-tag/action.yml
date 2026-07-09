@@ -1,0 +1,32 @@
+name: Compute image tag
+description: Computes a major.minor.buildid image tag from a package.json or pyproject.toml version field
+inputs:
+  version-file:
+    required: true
+    description: Path (relative to repo root) to the package.json or pyproject.toml containing the version
+  file-type:
+    required: true
+    description: "npm or pyproject"
+  run-number:
+    required: true
+    description: Build id to append, e.g. the triggering workflow's github.run_number
+outputs:
+  tag:
+    description: Computed image tag, e.g. 0.1.42
+    value: ${{ steps.compute.outputs.tag }}
+runs:
+  using: composite
+  steps:
+    - id: compute
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ "${{ inputs.file-type }}" = "npm" ]; then
+          VERSION=$(node -p "require('./${{ inputs.version-file }}').version")
+        else
+          VERSION=$(grep -E '^version\s*=' "${{ inputs.version-file }}" | head -1 | sed -E 's/version\s*=\s*"([^"]+)".*/\1/')
+        fi
+        MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+        TAG="${MAJOR_MINOR}.${{ inputs.run-number }}"
+        echo "Computed tag: $TAG (from $VERSION)"
+        echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
