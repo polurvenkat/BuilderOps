@@ -37,3 +37,70 @@ jobs:
           python-version: "3.12"
       - run: pip install .[dev]
       - run: pytest -q
+
+  frontend-build-push:
+    needs: frontend-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - id: acr
+        uses: ./.github/actions/ensure-acr
+        with:
+          acr-name: ${{ vars.ACR_NAME }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          location: ${{ vars.AZURE_LOCATION }}
+      - id: tag
+        uses: ./.github/actions/compute-tag
+        with:
+          version-file: frontend/package.json
+          file-type: npm
+          run-number: ${{ github.run_number }}
+      - run: az acr login --name ${{ vars.ACR_NAME }}
+      - run: |
+          docker build \
+            --build-arg VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} \
+            -t ${{ steps.acr.outputs.login-server }}/builderops-frontend:${{ steps.tag.outputs.tag }} \
+            frontend/
+      - run: docker push ${{ steps.acr.outputs.login-server }}/builderops-frontend:${{ steps.tag.outputs.tag }}
+
+  backend-build-push:
+    needs: backend-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - id: acr
+        uses: ./.github/actions/ensure-acr
+        with:
+          acr-name: ${{ vars.ACR_NAME }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          location: ${{ vars.AZURE_LOCATION }}
+      - id: tag
+        uses: ./.github/actions/compute-tag
+        with:
+          version-file: backend/pyproject.toml
+          file-type: pyproject
+          run-number: ${{ github.run_number }}
+      - run: az acr login --name ${{ vars.ACR_NAME }}
+      - run: |
+          docker build \
+            -t ${{ steps.acr.outputs.login-server }}/builderops-backend:${{ steps.tag.outputs.tag }} \
+            backend/
+      - run: docker push ${{ steps.acr.outputs.login-server }}/builderops-backend:${{ steps.tag.outputs.tag }}
