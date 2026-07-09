@@ -81,7 +81,7 @@ against an existing group.
 | `AZURE_TENANT_ID` | `ea4d58b6-6980-4312-be9a-ab68edfa574c` |
 | `AZURE_SUBSCRIPTION_ID` | `48e3acd2-a4f7-4c11-a2fb-934d6149f545` |
 | `DATABASE_URL` | The backend's Postgres connection string (from `backend/.env`, gitignored — never commit it) |
-| `GITHUB_TOKEN` | The backend's GitHub PAT (from `backend/.env`) |
+| `APP_GITHUB_TOKEN` | The backend's GitHub PAT (from `backend/.env`) — named `APP_GITHUB_TOKEN` because GitHub reserves the `GITHUB_` prefix for its own secrets/variables; passed to the container as `GITHUB_TOKEN` |
 | `ADO_PAT` | The backend's Azure DevOps PAT (from `backend/.env`) |
 
 These three app secrets are passed to the backend Container App as native
@@ -101,7 +101,7 @@ falls back to reading them straight from the environment when
 | `ACA_ENV_NAME` | `cae-builderops-wus3` |
 | `ACA_FRONTEND_APP` | `builderops-frontend-wus3` |
 | `ACA_BACKEND_APP` | `builderops-backend-wus3` |
-| `GITHUB_ORG` | `arriviainc-softeng` |
+| `GH_ORG` | `arriviainc-softeng` — named `GH_ORG` (not `GITHUB_ORG`) because GitHub reserves the `GITHUB_` prefix; passed to the container as `GITHUB_ORG` |
 | `ADO_ORG` | `arrivia` |
 | `ADO_PROJECT` | `SoftEng` |
 | `VITE_API_BASE_URL` | *(blank until step 4)* |
