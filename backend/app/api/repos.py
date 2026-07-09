@@ -1,4 +1,5 @@
 import statistics
+from collections import defaultdict
 from datetime import datetime, timezone
 
 import httpx
@@ -29,8 +30,9 @@ def _aware(dt):
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
-def _to_repo_out(repo: Repo, session: Session) -> RepoOut:
-    checks = session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()
+def _to_repo_out(repo: Repo, session: Session, checks: list[ReadinessCheck] | None = None) -> RepoOut:
+    if checks is None:
+        checks = session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()
     stages = {
         c.stage_key: StageCheckOut(status=c.status, source=c.source, detail=c.detail, updated_at=c.updated_at)
         for c in checks
@@ -82,7 +84,17 @@ def list_repos(
     query = session.query(Repo)
     if domain is not None:
         query = query.filter(Repo.domain == domain)
-    repos = [_to_repo_out(r, session) for r in query.all()]
+    repo_rows = query.all()
+
+    # Batch-fetch every repo's readiness checks in one query instead of one query per repo --
+    # against a remote DB, N sequential round trips dominate response time (11s for 230 repos).
+    checks_by_repo_id: dict[int, list[ReadinessCheck]] = defaultdict(list)
+    repo_ids = [r.id for r in repo_rows]
+    if repo_ids:
+        for check in session.query(ReadinessCheck).filter(ReadinessCheck.repo_id.in_(repo_ids)).all():
+            checks_by_repo_id[check.repo_id].append(check)
+
+    repos = [_to_repo_out(r, session, checks_by_repo_id.get(r.id, [])) for r in repo_rows]
 
     if stage is not None:
         repos = [r for r in repos if r.current_stage == stage]

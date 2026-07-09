@@ -48,6 +48,43 @@ def test_list_repos_returns_stage_map():
     assert body[0]["stages"]["codeowners_assigned"]["source"] == "auto"
 
 
+def test_list_repos_fetches_readiness_checks_in_a_constant_number_of_queries():
+    """Regression test: GET /repos must not issue one ReadinessCheck query per repo -- against
+    a remote DB, N sequential round trips (one per repo) dominate response time."""
+    from sqlalchemy import event
+
+    app = create_app(make_test_settings())
+    session = app.state.sessionmaker()
+    for i in range(10):
+        repo = Repo(name=f"repo-{i}", github_url=f"https://github.com/acme-org/repo-{i}")
+        session.add(repo)
+        session.commit()
+        session.add(ReadinessCheck(
+            repo_id=repo.id, stage_key="codeowners_assigned", status="pass", source="auto",
+            detail=None, updated_at=datetime.now(timezone.utc),
+        ))
+        session.commit()
+    session.close()
+
+    query_count = 0
+
+    def count_query(*args, **kwargs):
+        nonlocal query_count
+        query_count += 1
+
+    event.listen(app.state.engine, "before_cursor_execute", count_query)
+    try:
+        client = TestClient(app)
+        response = client.get("/repos")
+    finally:
+        event.remove(app.state.engine, "before_cursor_execute", count_query)
+
+    assert response.status_code == 200
+    assert len(response.json()) == 10
+    # One query for repos, one for all readiness checks -- must not scale with repo count.
+    assert query_count <= 3, f"expected a constant small number of queries, got {query_count}"
+
+
 def test_domain_assigned_reflects_repo_domain():
     app = create_app(make_test_settings())
     session = app.state.sessionmaker()
