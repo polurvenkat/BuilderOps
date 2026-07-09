@@ -40,6 +40,8 @@ async def run_github_sync(
                 session.flush()  # assigns repo.id before building checks
             repo.github_url = github_repo.url
             repo.last_synced_at = now
+            repo.primary_language = github_repo.primary_language
+            repo.total_code_bytes = github_repo.total_code_bytes
 
             for check in compute_readiness_checks(
                 github_repo, ado_repo_names, repo.id, now, dockerize_eligible=repo.dockerize_eligible,

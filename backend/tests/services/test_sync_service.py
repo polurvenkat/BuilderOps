@@ -35,6 +35,7 @@ def github_handler(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json={"data": {"r0": {
         "readme": {"id": "1"}, "codeowners": {"id": "2"}, "dockerfile": None,
         "branchProtectionRules": {"nodes": [{"pattern": "main", "requiredApprovingReviewCount": 1}]},
+        "primaryLanguage": {"name": "TypeScript"}, "languages": {"totalSize": 12345},
     }}})
 
 
@@ -52,6 +53,17 @@ async def test_run_github_sync_creates_repo_and_readiness_checks(session):
         "migrated_from_ado", "codeowners_assigned", "readme_present", "branch_protection",
         "naming_standardized", "dockerized", "deployed_aca",
     }
+
+
+@pytest.mark.asyncio
+async def test_run_github_sync_populates_primary_language_and_code_size(session):
+    transport = httpx.MockTransport(github_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as client:
+        await run_github_sync(session, client, org="acme-org", token="gh-token", now=NOW)
+
+    repo = session.query(Repo).filter_by(name="checkout-web").one()
+    assert repo.primary_language == "TypeScript"
+    assert repo.total_code_bytes == 12345
 
 
 @pytest.mark.asyncio
