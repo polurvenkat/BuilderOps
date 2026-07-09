@@ -180,4 +180,15 @@ describe("RepoTablePage", () => {
       expect(screen.getAllByTitle(new RegExp(`^${prefix}`)).length).toBeGreaterThan(0);
     });
   });
+
+  it("renders a column header for each Tested-card check", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [makeRepo({})] }));
+
+    renderTable();
+
+    await waitFor(() => expect(screen.getByText("repo")).toBeInTheDocument());
+    ["e2e_", "unit", "inte", "load"].forEach((prefix) => {
+      expect(screen.getAllByTitle(new RegExp(`^${prefix}`)).length).toBeGreaterThan(0);
+    });
+  });
 });

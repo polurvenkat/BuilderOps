@@ -16,6 +16,10 @@ const CHECK_COLUMNS = [
   "environment_gates_configured",
   "dockerized",
   "deployed_aca",
+  "e2e_covered",
+  "unit_tested",
+  "integration_tested",
+  "load_tested",
 ];
 
 function checkIcon(status: string | undefined): string {
