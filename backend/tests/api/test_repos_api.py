@@ -627,6 +627,27 @@ def test_list_repos_computes_complexity_against_the_full_unfiltered_repo_set():
 
     assert filtered["large-repo"] == unfiltered["large-repo"]
 
+    # A single-repo filter can't actually discriminate correct-vs-buggy behavior: with n=1,
+    # the tertile formula (low_end = 1//3 = 0, medium_end = 2*(1//3) = 0) buckets the lone repo
+    # as "high" either way. Use a 2-repo filter instead, where the buggy (filtered-set) and
+    # correct (full-set) rankings actually diverge:
+    #   Full set (n=3, sorted by bytes: small=1000, medium=5000, large=50000):
+    #     low_end = 3//3 = 1, medium_end = 2*(3//3) = 2
+    #     index 0 (small)  < 1          -> "low"
+    #     index 1 (medium) < 2          -> "medium"
+    #     index 2 (large)  else         -> "high"
+    #   Growth-filtered set (n=2, sorted by bytes: small=1000, medium=5000) -- if complexity
+    #   were (buggily) computed against just this filtered subset:
+    #     low_end = 2//3 = 0, medium_end = 2*(2//3) = 0
+    #     index 0 (small)  else (0 !< 0) -> "high"  (WRONG -- should stay "low")
+    #     index 1 (medium) else (0 !< 0) -> "high"  (WRONG -- should stay "medium")
+    growth_filtered = {r["name"]: r["complexity"] for r in client.get("/repos", params={"domain": "Growth"}).json()}
+
+    assert unfiltered["small-repo"] == "low"
+    assert unfiltered["medium-repo"] == "medium"
+    assert growth_filtered["small-repo"] == unfiltered["small-repo"] == "low"
+    assert growth_filtered["medium-repo"] == unfiltered["medium-repo"] == "medium"
+
 
 def test_get_single_repo_includes_complexity():
     app = create_app(make_test_settings())
