@@ -78,7 +78,7 @@ describe("JourneyPage", () => {
     expect(screen.getByText(/No CODEOWNERS assigned/)).toBeInTheDocument();
   });
 
-  it("renders Tested/Paved Road as Locked, and Piped as Locked when the repo has no pipeline link", async () => {
+  it("renders Piped and Tested as Locked when neither is mapped, and Paved Road as always Locked", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ ok: true, json: async () => STUCK_REPO })
@@ -90,6 +90,75 @@ describe("JourneyPage", () => {
     await waitFor(() => expect(screen.getByText("checkout-web")).toBeInTheDocument());
     const lockedBadges = screen.getAllByText("Locked");
     expect(lockedBadges.length).toBe(3); // Piped, Tested, Paved Road
+  });
+
+  it("shows Tested as 'You are here' with real sub-checks once an E2E Test Plan is mapped but failing", async () => {
+    const testedRepo: RepoOut = {
+      ...PIPED_REPO,
+      id: 3,
+      name: "checkout-web-tested",
+      stages: {
+        ...PIPED_REPO.stages,
+        e2e_covered: { status: "fail", source: "auto", detail: null, updated_at: "2026-07-01T00:00:00Z" },
+        unit_tested: { status: "pending_convention", source: "auto", detail: null, updated_at: "2026-07-01T00:00:00Z" },
+        integration_tested: { status: "pending_convention", source: "auto", detail: null, updated_at: "2026-07-01T00:00:00Z" },
+        load_tested: { status: "unknown", source: "auto", detail: null, updated_at: "2026-07-01T00:00:00Z" },
+      },
+      current_stage: "tested",
+      is_stuck: true,
+      stuck_reason: "E2E tests failing on the latest run — waiting on Growth team",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => testedRepo })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [], median_hours: null }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ stages: [{ name: "DEV", status: "succeeded", pending_approval_description: null }] }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderAtRepo("3");
+
+    await waitFor(() => expect(screen.getByText("checkout-web-tested")).toBeInTheDocument());
+    const testedCard = screen.getByText("TS-01").closest("div.rounded-xl") as HTMLElement;
+    expect(within(testedCard).getByText("You are here")).toBeInTheDocument();
+
+    await clickDetails(testedCard);
+    expect(within(testedCard).getByText("Unit tests")).toBeInTheDocument();
+  });
+
+  it("shows Tested as Cleared and wires testingProgress to 1 when e2e_covered passes", async () => {
+    const clearedTestedRepo: RepoOut = {
+      ...PIPED_REPO,
+      id: 4,
+      name: "checkout-web-cleared-tested",
+      stages: {
+        ...PIPED_REPO.stages,
+        e2e_covered: { status: "pass", source: "auto", detail: null, updated_at: "2026-07-01T00:00:00Z" },
+        unit_tested: { status: "pending_convention", source: "auto", detail: null, updated_at: "2026-07-01T00:00:00Z" },
+        integration_tested: { status: "pending_convention", source: "auto", detail: null, updated_at: "2026-07-01T00:00:00Z" },
+        load_tested: { status: "unknown", source: "auto", detail: null, updated_at: "2026-07-01T00:00:00Z" },
+      },
+      current_stage: "tested",
+      is_stuck: false,
+      stuck_reason: null,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => clearedTestedRepo })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [], median_hours: null }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ stages: [] }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = renderAtRepo("4");
+
+    await waitFor(() => expect(screen.getByText("checkout-web-cleared-tested")).toBeInTheDocument());
+    const testedCard = screen.getByText("TS-01").closest("div.rounded-xl") as HTMLElement;
+    expect(within(testedCard).getByText("Cleared")).toBeInTheDocument();
+
+    const testingLine = container.querySelector('[data-line="testing"]');
+    expect(testingLine).toHaveAttribute("stroke-dasharray", "100 100");
   });
 
   it("shows an error state when the fetch fails", async () => {

@@ -23,6 +23,14 @@ const PIPED_CHECK_LABELS: Record<string, string> = {
 const PIPED_BLOCKING_KEYS = ["pipeline_linked", "pipeline_is_yaml", "environment_gates_configured", "dockerized"];
 const DEPLOY_STAGE_NAMES = ["dev", "qa", "uat", "prod"];
 
+const TESTED_CHECK_ORDER = ["e2e_covered", "unit_tested", "integration_tested", "load_tested"];
+const TESTED_CHECK_LABELS: Record<string, string> = {
+  e2e_covered: "E2E coverage",
+  unit_tested: "Unit tests",
+  integration_tested: "Integration tests",
+  load_tested: "Load tests",
+};
+
 function fractionPassing(stages: Record<string, { status: string }>, keys: string[]): number {
   if (keys.length === 0) return 0;
   const passing = keys.filter((k) => stages[k]?.status === "pass").length;
@@ -64,6 +72,17 @@ function pipelineProgressFraction(stages: PipelineStageStatusOut[] | null): numb
   return relevant.filter((s) => s.status === "succeeded").length / relevant.length;
 }
 
+function testedBadge(repo: RepoOut): "Cleared" | "You are here" | "Locked" {
+  const status = repo.stages.e2e_covered?.status;
+  if (status === "pass") return "Cleared";
+  if (!status || status === "pending_convention") return "Locked";
+  return "You are here";
+}
+
+function testedChecks(repo: RepoOut) {
+  return TESTED_CHECK_ORDER.map((key) => ({ label: TESTED_CHECK_LABELS[key], check: repo.stages[key] }));
+}
+
 export function JourneyPage() {
   const { id } = useParams<{ id: string }>();
   const { repo: fetchedRepo, loading, error } = useRepo(Number(id));
@@ -97,6 +116,7 @@ export function JourneyPage() {
 
   const standardsProgress = fractionPassing(repo.stages, ["migrated_from_ado", ...STANDARDIZED_KEYS]);
   const pipelineProgress = pipelineProgressFraction(pipelineStages);
+  const testingProgress = repo.stages.e2e_covered?.status === "pass" ? 1 : 0;
 
   return (
     <div data-testid="journey-page" className="min-h-screen bg-bg text-chalk max-w-[760px] mx-auto px-6 py-12">
@@ -107,7 +127,7 @@ export function JourneyPage() {
         {repo.name}
       </h1>
 
-      <ConvergenceDiagram standardsProgress={standardsProgress} pipelineProgress={pipelineProgress} testingProgress={0} />
+      <ConvergenceDiagram standardsProgress={standardsProgress} pipelineProgress={pipelineProgress} testingProgress={testingProgress} />
 
       <div className="mt-8 flex flex-col gap-4">
         <StationCard
@@ -151,10 +171,11 @@ export function JourneyPage() {
         <StationCard
           code="TS-01"
           title="Tested"
-          description="Load testing, end-to-end testing, and code coverage all clear."
-          badge="Locked"
+          description="End-to-end tests are passing on the latest Azure Test Plans run."
+          badge={testedBadge(repo)}
           trackColor="#E7975C"
-          lockedNote="Not live yet — unlocks once the E2E/load connector ships."
+          checks={testedChecks(repo)}
+          lockedNote={testedBadge(repo) === "Locked" ? "Not live yet — unlocks once an E2E Test Plan is mapped." : undefined}
         />
         <StationCard
           code="PV-01"
