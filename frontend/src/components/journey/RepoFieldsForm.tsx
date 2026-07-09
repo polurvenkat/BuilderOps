@@ -26,6 +26,9 @@ export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: 
   const [team, setTeam] = useState(repo.team ?? "");
   const [wave, setWave] = useState(repo.migration_wave);
   const [dockerizeEligible, setDockerizeEligible] = useState(dockerizeEligibleToOption(repo.dockerize_eligible));
+  const [e2eTestPlanId, setE2eTestPlanId] = useState(
+    repo.e2e_test_plan_id != null ? String(repo.e2e_test_plan_id) : ""
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +37,7 @@ export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: 
   const teamId = useId();
   const waveId = useId();
   const dockerizeId = useId();
+  const e2eTestPlanIdId = useId();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -48,6 +52,12 @@ export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: 
       };
       if (dockerizeEligible !== "unset") {
         body.dockerize_eligible = dockerizeEligible === "true";
+      }
+      if (e2eTestPlanId.trim() !== "") {
+        const parsed = Number(e2eTestPlanId);
+        if (!Number.isNaN(parsed)) {
+          body.e2e_test_plan_id = parsed;
+        }
       }
       const updated = await patchRepo(repo.id, body);
       onUpdated(updated);
@@ -116,6 +126,18 @@ export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: 
             </option>
           ))}
         </select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label htmlFor={e2eTestPlanIdId} className="font-mono text-[10.5px] text-chalk-dim uppercase">
+          E2E test plan ID
+        </label>
+        <input
+          id={e2eTestPlanIdId}
+          type="number"
+          value={e2eTestPlanId}
+          onChange={(e) => setE2eTestPlanId(e.target.value)}
+          className="bg-bg border border-card-border rounded px-2 py-1.5 text-[13px] text-chalk"
+        />
       </div>
       <div className="flex items-center gap-3">
         <button

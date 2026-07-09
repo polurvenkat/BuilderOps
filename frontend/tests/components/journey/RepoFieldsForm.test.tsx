@@ -18,6 +18,7 @@ const REPO: RepoOut = {
   dwell_days: null,
   stuck_reason: null,
   dockerize_eligible: null,
+  e2e_test_plan_id: null,
 };
 
 afterEach(() => {
@@ -98,5 +99,44 @@ describe("RepoFieldsForm", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const [, options] = fetchMock.mock.calls[0];
     expect(JSON.parse(options.body)).not.toHaveProperty("dockerize_eligible");
+  });
+
+  it("pre-fills the E2E test plan ID from the repo's current value", () => {
+    render(<RepoFieldsForm repo={{ ...REPO, e2e_test_plan_id: 42 }} onUpdated={vi.fn()} />);
+
+    expect(screen.getByLabelText(/e2e test plan id/i)).toHaveValue(42);
+  });
+
+  it("leaves the E2E test plan ID input blank when the repo has no value", () => {
+    render(<RepoFieldsForm repo={REPO} onUpdated={vi.fn()} />);
+
+    expect(screen.getByLabelText(/e2e test plan id/i)).toHaveValue(null);
+  });
+
+  it("submits e2e_test_plan_id as a real number when filled in", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ...REPO, e2e_test_plan_id: 42 }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<RepoFieldsForm repo={REPO} onUpdated={vi.fn()} />);
+    await user.type(screen.getByLabelText(/e2e test plan id/i), "42");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, options] = fetchMock.mock.calls[0];
+    expect(JSON.parse(options.body)).toMatchObject({ e2e_test_plan_id: 42 });
+  });
+
+  it("omits e2e_test_plan_id from the PATCH body when left blank", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => REPO });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<RepoFieldsForm repo={REPO} onUpdated={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, options] = fetchMock.mock.calls[0];
+    expect(JSON.parse(options.body)).not.toHaveProperty("e2e_test_plan_id");
   });
 });
