@@ -2,9 +2,12 @@ import httpx
 import pytest
 
 from app.connectors.ado_pipelines_connector import (
+    PipelineDetailData,
     PipelineLinkData,
     PipelineStageStatus,
     ReleaseDefinitionData,
+    fetch_azure_git_repos,
+    fetch_pipeline_detail,
     fetch_pipeline_links,
     fetch_release_definitions,
     fetch_environment_checks,
@@ -13,26 +16,39 @@ from app.connectors.ado_pipelines_connector import (
 
 PIPELINES_LIST_RESPONSE = {"value": [{"id": 7, "name": "checkout-web-ci"}]}
 
+# Real ADO pipeline configurations never return a "url" field for either repository type:
+# a gitHub-backed pipeline identifies its repo via "fullName" (org/repo), and an
+# azureReposGit-backed pipeline via an opaque "id" GUID (resolved separately, see
+# fetch_azure_git_repos).
 PIPELINE_DETAIL_RESPONSE = {
     "id": 7,
     "name": "checkout-web-ci",
     "configuration": {
         "type": "yaml",
-        "repository": {"url": "https://github.com/acme-org/checkout-web"},
+        "repository": {"type": "gitHub", "fullName": "acme-org/checkout-web"},
     },
 }
 
 RELEASE_DEFINITIONS_RESPONSE = {"value": [{"id": 3, "name": "legacy-batch-classic-release"}]}
 
+GIT_REPOS_RESPONSE = {"value": []}
+
+
+def _pipelines_handler_returning(detail_response):
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = str(request.url.path)
+        if path.endswith("/_apis/pipelines"):
+            return httpx.Response(200, json=PIPELINES_LIST_RESPONSE)
+        if path.endswith("/_apis/git/repositories"):
+            return httpx.Response(200, json=GIT_REPOS_RESPONSE)
+        return httpx.Response(200, json=detail_response)
+
+    return handler
+
 
 @pytest.mark.asyncio
-async def test_fetch_pipeline_links_combines_list_and_detail():
-    def handler(request: httpx.Request) -> httpx.Response:
-        if str(request.url.path).endswith("/_apis/pipelines"):
-            return httpx.Response(200, json=PIPELINES_LIST_RESPONSE)
-        return httpx.Response(200, json=PIPELINE_DETAIL_RESPONSE)
-
-    transport = httpx.MockTransport(handler)
+async def test_fetch_pipeline_links_resolves_github_backed_pipeline_by_full_name():
+    transport = httpx.MockTransport(_pipelines_handler_returning(PIPELINE_DETAIL_RESPONSE))
     async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
         links = await fetch_pipeline_links(client, org="acme-ado", project="acme-project", pat="ado-pat")
 
@@ -40,23 +56,82 @@ async def test_fetch_pipeline_links_combines_list_and_detail():
         PipelineLinkData(
             pipeline_id=7,
             pipeline_name="checkout-web-ci",
-            repository_url="https://github.com/acme-org/checkout-web",
+            repository_name="checkout-web",
             is_yaml=True,
         )
     ]
 
 
 @pytest.mark.asyncio
-async def test_fetch_pipeline_links_flags_classic_pipelines_as_not_yaml():
+async def test_fetch_pipeline_links_resolves_azure_repos_git_pipeline_via_guid():
+    detail_response = {
+        "id": 7, "name": "checkout-web-ci",
+        "configuration": {"type": "yaml", "repository": {"type": "azureReposGit", "id": "guid-123"}},
+    }
+
     def handler(request: httpx.Request) -> httpx.Response:
-        if str(request.url.path).endswith("/_apis/pipelines"):
+        path = str(request.url.path)
+        if path.endswith("/_apis/pipelines"):
             return httpx.Response(200, json=PIPELINES_LIST_RESPONSE)
-        return httpx.Response(200, json={
-            "id": 7, "name": "checkout-web-ci",
-            "configuration": {"type": "designerJson", "repository": {"url": "https://github.com/acme-org/checkout-web"}},
-        })
+        if path.endswith("/_apis/git/repositories"):
+            return httpx.Response(200, json={"value": [{"id": "guid-123", "name": "checkout-web"}]})
+        return httpx.Response(200, json=detail_response)
 
     transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
+        links = await fetch_pipeline_links(client, org="acme-ado", project="acme-project", pat="ado-pat")
+
+    assert links == [
+        PipelineLinkData(pipeline_id=7, pipeline_name="checkout-web-ci", repository_name="checkout-web", is_yaml=True)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_fetch_pipeline_links_leaves_repository_name_empty_when_unresolvable():
+    detail_response = {
+        "id": 7, "name": "checkout-web-ci",
+        "configuration": {"type": "yaml", "repository": {"type": "azureReposGit", "id": "unknown-guid"}},
+    }
+    transport = httpx.MockTransport(_pipelines_handler_returning(detail_response))
+    async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
+        links = await fetch_pipeline_links(client, org="acme-ado", project="acme-project", pat="ado-pat")
+
+    assert links[0].repository_name == ""
+
+
+@pytest.mark.asyncio
+async def test_fetch_azure_git_repos_maps_guid_to_name():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url.path).endswith("/_apis/git/repositories")
+        return httpx.Response(200, json={"value": [{"id": "guid-123", "name": "checkout-web"}]})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
+        result = await fetch_azure_git_repos(client, org="acme-ado", project="acme-project", pat="ado-pat")
+
+    assert result == {"guid-123": "checkout-web"}
+
+
+@pytest.mark.asyncio
+async def test_fetch_pipeline_detail_returns_name_and_yaml_flag():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url.path).endswith("/_apis/pipelines/7")
+        return httpx.Response(200, json=PIPELINE_DETAIL_RESPONSE)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
+        detail = await fetch_pipeline_detail(client, org="acme-ado", project="acme-project", pat="ado-pat", pipeline_id=7)
+
+    assert detail == PipelineDetailData(pipeline_id=7, pipeline_name="checkout-web-ci", is_yaml=True)
+
+
+@pytest.mark.asyncio
+async def test_fetch_pipeline_links_flags_classic_pipelines_as_not_yaml():
+    detail_response = {
+        "id": 7, "name": "checkout-web-ci",
+        "configuration": {"type": "designerJson", "repository": {"type": "gitHub", "fullName": "acme-org/checkout-web"}},
+    }
+    transport = httpx.MockTransport(_pipelines_handler_returning(detail_response))
     async with httpx.AsyncClient(transport=transport, base_url="https://dev.azure.com/acme-ado") as client:
         links = await fetch_pipeline_links(client, org="acme-ado", project="acme-project", pat="ado-pat")
 

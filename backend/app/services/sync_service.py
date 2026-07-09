@@ -95,19 +95,9 @@ async def run_ado_sync(
 _GATE_ENVIRONMENT_NAMES = ["dev", "qa", "uat", "prod"]
 
 
-def _normalize_repo_url(url: str) -> str:
-    """Normalize a repo URL for comparison.
-
-    ADO's configuration.repository.url and GitHub's GraphQL url field can differ by
-    trivial formatting (a trailing `.git` suffix, a trailing slash, or letter casing)
-    while still referring to the same repository. Normalize both sides before comparing.
-    """
-    normalized = (url or "").strip().lower()
-    normalized = normalized.rstrip("/")
-    if normalized.endswith(".git"):
-        normalized = normalized[: -len(".git")]
-    normalized = normalized.rstrip("/")
-    return normalized
+def _normalize_repo_name(name: str) -> str:
+    """Normalize a repo name for comparison (case/whitespace only)."""
+    return (name or "").strip().lower()
 
 
 async def run_ado_pipelines_sync(
@@ -136,32 +126,42 @@ async def run_ado_pipelines_sync(
         )
 
         for repo in session.query(Repo).all():
-            normalized_repo_url = _normalize_repo_url(repo.github_url)
-            link_match = next(
-                (p for p in pipeline_links if _normalize_repo_url(p.repository_url) == normalized_repo_url),
-                None,
-            )
+            existing_link = session.query(PipelineLink).filter_by(repo_id=repo.id).one_or_none()
             has_classic = any(repo.name.lower() in rd.name.lower() for rd in release_defs)
 
-            if link_match is not None:
-                link_row = session.query(PipelineLink).filter_by(repo_id=repo.id).one_or_none()
-                if link_row is None:
-                    link_row = PipelineLink(repo_id=repo.id)
-                    session.add(link_row)
-                link_row.ado_pipeline_id = link_match.pipeline_id
-                link_row.ado_pipeline_name = link_match.pipeline_name
-                link_row.is_yaml = link_match.is_yaml
-                link_row.last_synced_at = now
-                session.flush()
-
+            if existing_link is not None and existing_link.source == "manual":
+                # A human explicitly linked this repo's pipeline (see PATCH /repos/{id}) --
+                # auto-sync must not clobber that with its own (possibly wrong) name match.
+                has_pipeline_link = True
+                is_yaml = existing_link.is_yaml
                 environment_gates = environment_gates_by_project
             else:
-                environment_gates = {}
+                normalized_repo_name = _normalize_repo_name(repo.name)
+                link_match = next(
+                    (p for p in pipeline_links if p.repository_name and _normalize_repo_name(p.repository_name) == normalized_repo_name),
+                    None,
+                )
+
+                if link_match is not None:
+                    link_row = existing_link
+                    if link_row is None:
+                        link_row = PipelineLink(repo_id=repo.id)
+                        session.add(link_row)
+                    link_row.ado_pipeline_id = link_match.pipeline_id
+                    link_row.ado_pipeline_name = link_match.pipeline_name
+                    link_row.is_yaml = link_match.is_yaml
+                    link_row.source = "auto"
+                    link_row.last_synced_at = now
+                    session.flush()
+
+                has_pipeline_link = link_match is not None
+                is_yaml = link_match.is_yaml if link_match else None
+                environment_gates = environment_gates_by_project if link_match is not None else {}
 
             for check in compute_pipeline_readiness_checks(
                 repo_id=repo.id,
-                has_pipeline_link=link_match is not None,
-                is_yaml=link_match.is_yaml if link_match else None,
+                has_pipeline_link=has_pipeline_link,
+                is_yaml=is_yaml,
                 has_classic_release_def=has_classic,
                 environment_gates=environment_gates,
                 now=now,

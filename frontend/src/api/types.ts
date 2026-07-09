@@ -34,6 +34,7 @@ export interface RepoPatchIn {
   migration_wave?: "not_started" | "pilot" | "rolling_out" | "migrated";
   dockerize_eligible?: boolean;
   e2e_test_plan_id?: number;
+  ado_pipeline_id?: number;
 }
 
 export interface OnboardingLogIn {

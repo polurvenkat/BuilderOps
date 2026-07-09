@@ -45,6 +45,7 @@ class PipelineLink(Base):
     ado_pipeline_id: Mapped[int] = mapped_column(nullable=False)
     ado_pipeline_name: Mapped[str] = mapped_column(String, nullable=False)
     is_yaml: Mapped[bool] = mapped_column(nullable=False)
+    source: Mapped[str] = mapped_column(String, nullable=False, default="auto")
     last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 

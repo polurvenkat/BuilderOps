@@ -113,20 +113,25 @@ async def test_run_github_sync_preserves_status_changed_at_across_unchanged_runs
 
 
 PIPELINES_LIST = {"value": [{"id": 7, "name": "checkout-web-ci"}]}
+# Real ADO pipeline configurations never return a "url" field -- gitHub-backed repos
+# identify themselves via "fullName" (org/repo).
 PIPELINE_DETAIL = {
     "id": 7, "name": "checkout-web-ci",
-    "configuration": {"type": "yaml", "repository": {"url": "https://github.com/acme-org/checkout-web"}},
+    "configuration": {"type": "yaml", "repository": {"type": "gitHub", "fullName": "acme-org/checkout-web"}},
 }
 ENVIRONMENTS = {"value": [
     {"id": 10, "name": "Dev Deployment"}, {"id": 11, "name": "QA Deployment"},
     {"id": 12, "name": "UAT Deployment"}, {"id": 13, "name": "Prod Deployment"},
 ]}
+EMPTY_GIT_REPOS = {"value": []}
 
 
 def pipelines_handler(request: httpx.Request) -> httpx.Response:
     path = str(request.url.path)
     if path.endswith("/_apis/pipelines"):
         return httpx.Response(200, json=PIPELINES_LIST)
+    if path.endswith("/_apis/git/repositories"):
+        return httpx.Response(200, json=EMPTY_GIT_REPOS)
     if path.endswith("/_apis/pipelines/7"):
         return httpx.Response(200, json=PIPELINE_DETAIL)
     if path.endswith("/_apis/pipelines/environments"):
@@ -142,7 +147,7 @@ def release_handler(request: httpx.Request) -> httpx.Response:
 PIPELINES_LIST_MULTI = {"value": [{"id": 7, "name": "checkout-web-ci"}, {"id": 8, "name": "billing-api-ci"}]}
 PIPELINE_DETAIL_2 = {
     "id": 8, "name": "billing-api-ci",
-    "configuration": {"type": "yaml", "repository": {"url": "https://github.com/acme-org/billing-api"}},
+    "configuration": {"type": "yaml", "repository": {"type": "gitHub", "fullName": "acme-org/billing-api"}},
 }
 
 
@@ -154,6 +159,8 @@ def make_pipelines_handler_with_call_counts(call_counts: dict[str, int]):
         path = str(request.url.path)
         if path.endswith("/_apis/pipelines"):
             return httpx.Response(200, json=PIPELINES_LIST_MULTI)
+        if path.endswith("/_apis/git/repositories"):
+            return httpx.Response(200, json=EMPTY_GIT_REPOS)
         if path.endswith("/_apis/pipelines/7"):
             return httpx.Response(200, json=PIPELINE_DETAIL)
         if path.endswith("/_apis/pipelines/8"):
@@ -251,14 +258,9 @@ async def test_run_ado_pipelines_sync_fetches_environment_gates_exactly_once_for
         assert checks["environment_gates_configured"].status == "pass"
 
 
-@pytest.mark.parametrize("github_url_variant", [
-    "https://github.com/acme-org/checkout-web.git",
-    "https://github.com/acme-org/checkout-web/",
-    "https://github.com/ACME-ORG/Checkout-Web",
-])
 @pytest.mark.asyncio
-async def test_run_ado_pipelines_sync_matches_repo_url_despite_trivial_formatting_differences(session, github_url_variant):
-    session.add(Repo(name="checkout-web", github_url=github_url_variant))
+async def test_run_ado_pipelines_sync_matches_repo_name_case_insensitively(session):
+    session.add(Repo(name="Checkout-Web", github_url="https://github.com/acme-org/checkout-web"))
     session.commit()
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(pipelines_handler), base_url="https://dev.azure.com/acme-ado") as pipelines_client, \
@@ -268,7 +270,34 @@ async def test_run_ado_pipelines_sync_matches_repo_url_despite_trivial_formattin
         )
 
     assert sync_run.status == "success"
-    repo = session.query(Repo).filter_by(name="checkout-web").one()
+    repo = session.query(Repo).filter_by(name="Checkout-Web").one()
+    checks = {c.stage_key: c for c in session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()}
+    assert checks["pipeline_linked"].status == "pass"
+
+
+@pytest.mark.asyncio
+async def test_run_ado_pipelines_sync_preserves_a_manually_linked_pipeline(session):
+    """A repo whose pipeline was set via PATCH /repos/{id} (source='manual') must not be
+    re-matched or overwritten by the next auto-sync, even if auto-matching would disagree."""
+    repo = Repo(name="checkout-web", github_url="https://github.com/acme-org/checkout-web")
+    session.add(repo)
+    session.commit()
+    session.add(PipelineLink(
+        repo_id=repo.id, ado_pipeline_id=999, ado_pipeline_name="manually-set-pipeline",
+        is_yaml=True, source="manual",
+    ))
+    session.commit()
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(pipelines_handler), base_url="https://dev.azure.com/acme-ado") as pipelines_client, \
+            httpx.AsyncClient(transport=httpx.MockTransport(release_handler), base_url="https://vsrm.dev.azure.com/acme-ado") as release_client:
+        sync_run = await run_ado_pipelines_sync(
+            session, pipelines_client, release_client, org="acme-ado", project="acme-project", pat="ado-pat", now=NOW,
+        )
+
+    assert sync_run.status == "success"
+    link = session.query(PipelineLink).filter_by(repo_id=repo.id).one()
+    assert link.ado_pipeline_id == 999
+    assert link.source == "manual"
     checks = {c.stage_key: c for c in session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()}
     assert checks["pipeline_linked"].status == "pass"
 

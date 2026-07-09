@@ -440,6 +440,50 @@ def test_patch_repo_updates_e2e_test_plan_id():
     session.close()
 
 
+def test_patch_repo_manually_links_a_pipeline(monkeypatch):
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+
+    from app.connectors.ado_pipelines_connector import PipelineDetailData
+
+    async def fake_fetch_pipeline_detail(client, org, project, pat, pipeline_id):
+        assert pipeline_id == 42
+        return PipelineDetailData(pipeline_id=42, pipeline_name="checkout-web-release", is_yaml=True)
+
+    monkeypatch.setattr("app.api.repos.fetch_pipeline_detail", fake_fetch_pipeline_detail)
+
+    client = TestClient(app)
+    response = client.patch(f"/repos/{repo_id}", json={"ado_pipeline_id": 42})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stages"]["pipeline_linked"]["status"] == "pass"
+    assert body["stages"]["pipeline_linked"]["source"] == "manual"
+    assert body["stages"]["pipeline_is_yaml"]["status"] == "pass"
+
+    session = app.state.sessionmaker()
+    link = session.query(PipelineLink).filter_by(repo_id=repo_id).one()
+    assert link.ado_pipeline_id == 42
+    assert link.ado_pipeline_name == "checkout-web-release"
+    assert link.source == "manual"
+    session.close()
+
+
+def test_patch_repo_502_when_manual_pipeline_link_ado_call_fails(monkeypatch):
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+
+    async def failing_fetch(client, org, project, pat, pipeline_id):
+        raise httpx.HTTPError("boom")
+
+    monkeypatch.setattr("app.api.repos.fetch_pipeline_detail", failing_fetch)
+
+    client = TestClient(app)
+    response = client.patch(f"/repos/{repo_id}", json={"ado_pipeline_id": 42})
+
+    assert response.status_code == 502
+
+
 def test_repo_out_exposes_dockerize_eligible():
     app = create_app(make_test_settings())
     repo_id = seed_repo(app)

@@ -9,7 +9,7 @@ from app.connectors.ado_connector import _basic_auth_header
 class PipelineLinkData:
     pipeline_id: int
     pipeline_name: str
-    repository_url: str
+    repository_name: str
     is_yaml: bool
 
 
@@ -19,11 +19,33 @@ class ReleaseDefinitionData:
     name: str
 
 
+@dataclass
+class PipelineDetailData:
+    pipeline_id: int
+    pipeline_name: str
+    is_yaml: bool
+
+
+async def fetch_azure_git_repos(client: httpx.AsyncClient, org: str, project: str, pat: str) -> dict[str, str]:
+    """Map Azure Repos Git repository GUID -> repository name for this project.
+
+    ADO pipeline configurations backed by Azure Repos Git identify their repository by an
+    opaque GUID (configuration.repository.id), not a URL or name -- this resolves that GUID
+    so pipelines can be matched against a tracked repo's name.
+    """
+    headers = {"Authorization": _basic_auth_header(pat)}
+    resp = await client.get(f"/{project}/_apis/git/repositories", params={"api-version": "7.1"}, headers=headers)
+    resp.raise_for_status()
+    return {item["id"]: item["name"] for item in resp.json()["value"]}
+
+
 async def fetch_pipeline_links(client: httpx.AsyncClient, org: str, project: str, pat: str) -> list[PipelineLinkData]:
     headers = {"Authorization": _basic_auth_header(pat)}
     list_resp = await client.get(f"/{project}/_apis/pipelines", params={"api-version": "7.1"}, headers=headers)
     list_resp.raise_for_status()
     pipelines = list_resp.json()["value"]
+
+    azure_git_repo_names = await fetch_azure_git_repos(client, org=org, project=project, pat=pat)
 
     results: list[PipelineLinkData] = []
     for pipeline in pipelines:
@@ -34,15 +56,45 @@ async def fetch_pipeline_links(client: httpx.AsyncClient, org: str, project: str
         detail = detail_resp.json()
         configuration = detail.get("configuration") or {}
         repository = configuration.get("repository") or {}
+        repository_type = repository.get("type", "")
+
+        # ADO never returns a plain "url" for either repository type: a gitHub-backed
+        # pipeline's repository identifies itself via "fullName" (org/repo), and an
+        # azureReposGit-backed pipeline via an opaque "id" GUID resolved above.
+        if repository_type in ("gitHub", "gitHubEnterprise"):
+            full_name = repository.get("fullName", "")
+            repository_name = full_name.rsplit("/", 1)[-1] if full_name else ""
+        elif repository_type == "azureReposGit":
+            repository_name = azure_git_repo_names.get(repository.get("id", ""), "")
+        else:
+            repository_name = ""
+
         results.append(
             PipelineLinkData(
                 pipeline_id=detail["id"],
                 pipeline_name=detail["name"],
-                repository_url=repository.get("url", ""),
+                repository_name=repository_name,
                 is_yaml=configuration.get("type") == "yaml",
             )
         )
     return results
+
+
+async def fetch_pipeline_detail(
+    client: httpx.AsyncClient, org: str, project: str, pat: str, pipeline_id: int
+) -> PipelineDetailData:
+    headers = {"Authorization": _basic_auth_header(pat)}
+    resp = await client.get(
+        f"/{project}/_apis/pipelines/{pipeline_id}", params={"api-version": "7.1"}, headers=headers,
+    )
+    resp.raise_for_status()
+    detail = resp.json()
+    configuration = detail.get("configuration") or {}
+    return PipelineDetailData(
+        pipeline_id=detail["id"],
+        pipeline_name=detail["name"],
+        is_yaml=configuration.get("type") == "yaml",
+    )
 
 
 async def fetch_release_definitions(

@@ -29,6 +29,7 @@ export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: 
   const [e2eTestPlanId, setE2eTestPlanId] = useState(
     repo.e2e_test_plan_id != null ? String(repo.e2e_test_plan_id) : ""
   );
+  const [adoPipelineId, setAdoPipelineId] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +39,9 @@ export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: 
   const waveId = useId();
   const dockerizeId = useId();
   const e2eTestPlanIdId = useId();
+  const adoPipelineIdId = useId();
+
+  const pipelineNotConnected = repo.stages.pipeline_linked?.status !== "pass";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -59,8 +63,15 @@ export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: 
           body.e2e_test_plan_id = parsed;
         }
       }
+      if (adoPipelineId.trim() !== "") {
+        const parsed = Number(adoPipelineId);
+        if (!Number.isNaN(parsed)) {
+          body.ado_pipeline_id = parsed;
+        }
+      }
       const updated = await patchRepo(repo.id, body);
       onUpdated(updated);
+      setAdoPipelineId("");
       setSaved(true);
     } catch (err) {
       setError((err as Error).message);
@@ -136,6 +147,19 @@ export function RepoFieldsForm({ repo, onUpdated }: { repo: RepoOut; onUpdated: 
           type="number"
           value={e2eTestPlanId}
           onChange={(e) => setE2eTestPlanId(e.target.value)}
+          className="bg-bg border border-card-border rounded px-2 py-1.5 text-[13px] text-chalk"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label htmlFor={adoPipelineIdId} className="font-mono text-[10.5px] text-chalk-dim uppercase">
+          {pipelineNotConnected ? "Pipeline not connected — link it by ID" : "ADO pipeline ID (override)"}
+        </label>
+        <input
+          id={adoPipelineIdId}
+          type="number"
+          value={adoPipelineId}
+          onChange={(e) => setAdoPipelineId(e.target.value)}
+          placeholder="e.g. 2986"
           className="bg-bg border border-card-border rounded px-2 py-1.5 text-[13px] text-chalk"
         />
       </div>

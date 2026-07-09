@@ -5,7 +5,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.connectors.ado_pipelines_connector import fetch_pipeline_run_status
+from app.connectors.ado_pipelines_connector import fetch_pipeline_detail, fetch_pipeline_run_status
 from app.main import get_db
 from app.models import OnboardingLog, PipelineLink, ReadinessCheck, Repo
 from app.schemas import (
@@ -102,7 +102,7 @@ def get_repo(repo_id: int, session: Session = Depends(get_db)):
 
 
 @router.patch("/{repo_id}", response_model=RepoOut)
-def patch_repo(repo_id: int, body: RepoPatchIn, session: Session = Depends(get_db)):
+async def patch_repo(repo_id: int, body: RepoPatchIn, request: Request, session: Session = Depends(get_db)):
     repo = session.get(Repo, repo_id)
     if repo is None:
         raise HTTPException(status_code=404, detail="Repo not found")
@@ -125,6 +125,35 @@ def patch_repo(repo_id: int, body: RepoPatchIn, session: Session = Depends(get_d
         repo.dockerize_eligible = body.dockerize_eligible
     if body.e2e_test_plan_id is not None:
         repo.e2e_test_plan_id = body.e2e_test_plan_id
+    if body.ado_pipeline_id is not None:
+        settings = request.app.state.settings
+        try:
+            async with httpx.AsyncClient(base_url=f"https://dev.azure.com/{settings.ado_org}", timeout=30.0) as client:
+                detail = await fetch_pipeline_detail(
+                    client, org=settings.ado_org, project=settings.ado_project, pat=settings.ado_pat,
+                    pipeline_id=body.ado_pipeline_id,
+                )
+        except httpx.HTTPError:
+            raise HTTPException(status_code=502, detail="Couldn't reach Azure DevOps")
+
+        link = session.query(PipelineLink).filter_by(repo_id=repo_id).one_or_none()
+        if link is None:
+            link = PipelineLink(repo_id=repo_id)
+            session.add(link)
+        link.ado_pipeline_id = detail.pipeline_id
+        link.ado_pipeline_name = detail.pipeline_name
+        link.is_yaml = detail.is_yaml
+        link.source = "manual"
+        now = datetime.now(timezone.utc)
+        link.last_synced_at = now
+        upsert_readiness_check(session, ReadinessCheck(
+            repo_id=repo_id, stage_key="pipeline_linked", status="pass",
+            source="manual", detail=None, updated_at=now,
+        ))
+        upsert_readiness_check(session, ReadinessCheck(
+            repo_id=repo_id, stage_key="pipeline_is_yaml", status="pass" if detail.is_yaml else "fail",
+            source="manual", detail=None, updated_at=now,
+        ))
     session.commit()
     return _to_repo_out(repo, session)
 

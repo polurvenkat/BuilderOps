@@ -166,7 +166,7 @@ export function JourneyPage() {
           badge={pipedBadge(repo)}
           trackColor="#3FBBA0"
           checks={pipedChecks(repo)}
-          lockedNote={!linked ? "Not live yet — unlocks once a pipeline is linked in Azure DevOps." : undefined}
+          lockedNote={!linked ? "Not connected — link the pipeline ID below, or wait for the next sync." : undefined}
         />
         <StationCard
           code="TS-01"

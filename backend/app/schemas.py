@@ -38,6 +38,7 @@ class RepoPatchIn(BaseModel):
     migration_wave: Literal["not_started", "pilot", "rolling_out", "migrated"] | None = None
     dockerize_eligible: bool | None = None
     e2e_test_plan_id: int | None = None
+    ado_pipeline_id: int | None = None
 
 
 class OnboardingLogIn(BaseModel):
