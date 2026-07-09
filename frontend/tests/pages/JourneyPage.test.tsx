@@ -78,6 +78,19 @@ describe("JourneyPage", () => {
     expect(screen.getByText(/No CODEOWNERS assigned/)).toBeInTheDocument();
   });
 
+  it("links back to the Fleet landing page", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => STUCK_REPO })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [], median_hours: null }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderAtRepo("1");
+
+    await waitFor(() => expect(screen.getByText("checkout-web")).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: /BuilderOps · Repo Status/ })).toHaveAttribute("href", "/");
+  });
+
   it("renders Piped and Tested as Locked when neither is mapped, and Paved Road as always Locked", async () => {
     const fetchMock = vi
       .fn()

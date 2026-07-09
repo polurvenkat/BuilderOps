@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useRepo } from "../hooks/useRepo";
 import { usePipelineStatus } from "../hooks/usePipelineStatus";
 import { ConvergenceDiagram } from "../components/journey/ConvergenceDiagram";
@@ -120,9 +120,12 @@ export function JourneyPage() {
 
   return (
     <div data-testid="journey-page" className="min-h-screen bg-bg text-chalk max-w-[760px] mx-auto px-6 py-12">
-      <div className="font-mono text-[11px] text-chalk-dim uppercase tracking-wide mb-2">
-        BuilderOps · Repo Status
-      </div>
+      <Link
+        to="/"
+        className="font-mono text-[11px] text-chalk-dim uppercase tracking-wide mb-2 inline-block hover:text-chalk"
+      >
+        ← BuilderOps · Repo Status
+      </Link>
       <h1 className="font-display text-[clamp(36px,7vw,56px)] font-extrabold tracking-tight mb-8">
         {repo.name}
       </h1>
