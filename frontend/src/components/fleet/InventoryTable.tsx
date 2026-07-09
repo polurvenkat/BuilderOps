@@ -42,6 +42,7 @@ function InventoryRow({ repo, onUpdated }: { repo: RepoOut; onUpdated: (repo: Re
   }
 
   async function commitAppCount() {
+    setError(null);
     const trimmed = appCount.trim();
     if (trimmed === "") return;
     const parsed = Number(trimmed);
