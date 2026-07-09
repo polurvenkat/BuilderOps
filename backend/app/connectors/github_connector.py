@@ -113,3 +113,19 @@ async def fetch_repos(client: httpx.AsyncClient, org: str, token: str) -> list[G
                 )
             )
     return results
+
+
+@dataclass
+class RenamedRepoData:
+    name: str
+    url: str
+
+
+async def rename_repo(
+    client: httpx.AsyncClient, org: str, token: str, current_name: str, new_name: str
+) -> RenamedRepoData:
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = await client.patch(f"/repos/{org}/{current_name}", json={"name": new_name}, headers=headers)
+    resp.raise_for_status()
+    body = resp.json()
+    return RenamedRepoData(name=body["name"], url=body["html_url"])

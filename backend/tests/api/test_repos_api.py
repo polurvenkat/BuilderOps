@@ -649,6 +649,54 @@ def test_list_repos_computes_complexity_against_the_full_unfiltered_repo_set():
     assert growth_filtered["medium-repo"] == unfiltered["medium-repo"] == "medium"
 
 
+def test_patch_repo_renames_the_real_github_repo_on_the_same_row(monkeypatch):
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+
+    from app.connectors.github_connector import RenamedRepoData
+
+    async def fake_rename_repo(client, org, token, current_name, new_name):
+        assert current_name == "checkout-web"
+        assert new_name == "checkout-web-v2"
+        return RenamedRepoData(name="checkout-web-v2", url="https://github.com/acme-org/checkout-web-v2")
+
+    monkeypatch.setattr("app.api.repos.rename_repo", fake_rename_repo)
+
+    client = TestClient(app)
+    response = client.patch(f"/repos/{repo_id}", json={"new_name": "checkout-web-v2"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "checkout-web-v2"
+    assert body["id"] == repo_id  # same row, not a new repo
+
+    session = app.state.sessionmaker()
+    assert session.query(Repo).count() == 1  # no duplicate row created
+    repo = session.get(Repo, repo_id)
+    assert repo.name == "checkout-web-v2"
+    assert repo.github_url == "https://github.com/acme-org/checkout-web-v2"
+    session.close()
+
+
+def test_patch_repo_502_when_github_rename_call_fails(monkeypatch):
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+
+    async def failing_rename(client, org, token, current_name, new_name):
+        raise httpx.HTTPError("boom")
+
+    monkeypatch.setattr("app.api.repos.rename_repo", failing_rename)
+
+    client = TestClient(app)
+    response = client.patch(f"/repos/{repo_id}", json={"new_name": "checkout-web-v2"})
+
+    assert response.status_code == 502
+    session = app.state.sessionmaker()
+    repo = session.get(Repo, repo_id)
+    assert repo.name == "checkout-web"  # unchanged on failure
+    session.close()
+
+
 def test_get_single_repo_includes_complexity():
     app = create_app(make_test_settings())
     session = app.state.sessionmaker()

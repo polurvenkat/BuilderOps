@@ -91,6 +91,39 @@ async def test_run_github_sync_records_failure_on_connector_error(session):
 
 
 @pytest.mark.asyncio
+async def test_run_github_sync_does_not_duplicate_a_repo_that_was_renamed_via_patch(session):
+    """Regression test for the rename flow's core correctness requirement: PATCH /repos/{id}
+    with new_name updates Repo.name on the existing row directly (not via a sync). The next
+    github sync must recognize the row by its NEW name and update it in place, not create
+    a second Repo row and orphan the first one's history."""
+    repo = Repo(name="checkout-web-v2", github_url="https://github.com/acme-org/checkout-web-v2")
+    session.add(repo)
+    session.commit()
+    original_id = repo.id
+
+    def renamed_handler(request: httpx.Request) -> httpx.Response:
+        body = request.content.decode()
+        if "repositories(first:" in body:
+            return httpx.Response(200, json={"data": {"organization": {"repositories": {
+                "pageInfo": {"hasNextPage": False, "endCursor": None},
+                "nodes": [{"name": "checkout-web-v2", "url": "https://github.com/acme-org/checkout-web-v2"}],
+            }}}})
+        return httpx.Response(200, json={"data": {"r0": {
+            "readme": {"id": "1"}, "codeowners": {"id": "2"}, "dockerfile": None,
+            "branchProtectionRules": {"nodes": []},
+            "primaryLanguage": {"name": "TypeScript"}, "languages": {"totalSize": 999},
+        }}})
+
+    transport = httpx.MockTransport(renamed_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as client:
+        await run_github_sync(session, client, org="acme-org", token="gh-token", now=NOW)
+
+    assert session.query(Repo).count() == 1
+    repo = session.get(Repo, original_id)
+    assert repo.name == "checkout-web-v2"
+
+
+@pytest.mark.asyncio
 async def test_run_ado_sync_stores_snapshot():
     engine = get_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)

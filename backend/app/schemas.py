@@ -43,6 +43,7 @@ class RepoPatchIn(BaseModel):
     e2e_test_plan_id: int | None = None
     ado_pipeline_id: int | None = None
     app_count: int | None = None
+    new_name: str | None = None
 
 
 class OnboardingLogIn(BaseModel):

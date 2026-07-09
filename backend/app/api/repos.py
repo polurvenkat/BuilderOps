@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.connectors.ado_pipelines_connector import fetch_pipeline_detail, fetch_pipeline_run_status
+from app.connectors.github_connector import rename_repo
 from app.main import get_db
 from app.models import OnboardingLog, PipelineLink, ReadinessCheck, Repo
 from app.schemas import (
@@ -185,6 +186,23 @@ async def patch_repo(repo_id: int, body: RepoPatchIn, request: Request, session:
             repo_id=repo_id, stage_key="pipeline_is_yaml", status="pass" if detail.is_yaml else "fail",
             source="manual", detail=None, updated_at=now,
         ))
+    if body.new_name is not None:
+        settings = request.app.state.settings
+        try:
+            async with httpx.AsyncClient(base_url="https://api.github.com", timeout=30.0) as client:
+                renamed = await rename_repo(
+                    client, org=settings.github_org, token=settings.github_token,
+                    current_name=repo.name, new_name=body.new_name,
+                )
+        except httpx.HTTPError:
+            raise HTTPException(status_code=502, detail="Couldn't reach GitHub")
+
+        # Update the SAME row GitHub just renamed -- run_github_sync matches incoming repos by
+        # Repo.name, so if this doesn't land on the existing row, the next sync creates a
+        # duplicate Repo and orphans every readiness check/onboarding log/domain/team tied to
+        # the old row's id.
+        repo.name = renamed.name
+        repo.github_url = renamed.url
     session.commit()
     complexity_map = _compute_complexity_map(session)
     return _to_repo_out(repo, session, complexity=complexity_map.get(repo_id))

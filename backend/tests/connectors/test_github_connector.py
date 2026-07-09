@@ -1,7 +1,9 @@
+import json
+
 import httpx
 import pytest
 
-from app.connectors.github_connector import GitHubRepoData, fetch_repos
+from app.connectors.github_connector import GitHubRepoData, RenamedRepoData, fetch_repos, rename_repo
 
 REPO_LIST_RESPONSE = {
     "data": {
@@ -118,3 +120,37 @@ async def test_fetch_repos_sends_bearer_token():
         await fetch_repos(client, org="acme-org", token="gh-token")
 
     assert seen_headers["authorization"] == "Bearer gh-token"
+
+
+@pytest.mark.asyncio
+async def test_rename_repo_calls_the_real_rest_endpoint_and_returns_updated_name_and_url():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = str(request.url.path)
+        seen["body"] = json.loads(request.content.decode())
+        return httpx.Response(200, json={
+            "name": "checkout-web-v2",
+            "html_url": "https://github.com/acme-org/checkout-web-v2",
+        })
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as client:
+        result = await rename_repo(client, org="acme-org", token="gh-token", current_name="checkout-web", new_name="checkout-web-v2")
+
+    assert seen["method"] == "PATCH"
+    assert seen["path"] == "/repos/acme-org/checkout-web"
+    assert seen["body"] == {"name": "checkout-web-v2"}
+    assert result == RenamedRepoData(name="checkout-web-v2", url="https://github.com/acme-org/checkout-web-v2")
+
+
+@pytest.mark.asyncio
+async def test_rename_repo_raises_on_http_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(422, json={"message": "Validation Failed"})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            await rename_repo(client, org="acme-org", token="gh-token", current_name="checkout-web", new_name="bad name")
