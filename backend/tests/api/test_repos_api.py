@@ -697,6 +697,28 @@ def test_patch_repo_502_when_github_rename_call_fails(monkeypatch):
     session.close()
 
 
+def test_patch_repo_surfaces_github_status_when_rename_is_rejected(monkeypatch):
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+
+    async def rejected_rename(client, org, token, current_name, new_name):
+        request = httpx.Request("PATCH", "https://api.github.com/repos/acme-org/checkout-web")
+        response = httpx.Response(422, json={"message": "name already exists on this account"}, request=request)
+        raise httpx.HTTPStatusError("422 Client Error", request=request, response=response)
+
+    monkeypatch.setattr("app.api.repos.rename_repo", rejected_rename)
+
+    client = TestClient(app)
+    response = client.patch(f"/repos/{repo_id}", json={"new_name": "checkout-web-v2"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "name already exists on this account"
+    session = app.state.sessionmaker()
+    repo = session.get(Repo, repo_id)
+    assert repo.name == "checkout-web"  # unchanged on failure
+    session.close()
+
+
 def test_get_single_repo_includes_complexity():
     app = create_app(make_test_settings())
     session = app.state.sessionmaker()

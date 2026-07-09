@@ -194,6 +194,15 @@ async def patch_repo(repo_id: int, body: RepoPatchIn, request: Request, session:
                     client, org=settings.github_org, token=settings.github_token,
                     current_name=repo.name, new_name=body.new_name,
                 )
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if 400 <= status < 500:
+                try:
+                    message = exc.response.json().get("message", "GitHub rejected the rename")
+                except Exception:
+                    message = "GitHub rejected the rename"
+                raise HTTPException(status_code=status, detail=message)
+            raise HTTPException(status_code=502, detail="Couldn't reach GitHub")
         except httpx.HTTPError:
             raise HTTPException(status_code=502, detail="Couldn't reach GitHub")
 
