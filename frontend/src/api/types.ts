@@ -14,6 +14,7 @@ export interface RepoOut {
   github_url: string;
   last_synced_at: string | null;
   dockerize_eligible?: boolean | null;
+  e2e_test_plan_id?: number | null;
   stages: Record<string, StageCheckOut>;
   current_stage: string;
   is_stuck: boolean;
@@ -32,6 +33,7 @@ export interface RepoPatchIn {
   team?: string;
   migration_wave?: "not_started" | "pilot" | "rolling_out" | "migrated";
   dockerize_eligible?: boolean;
+  e2e_test_plan_id?: number;
 }
 
 export interface OnboardingLogIn {
