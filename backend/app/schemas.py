@@ -22,6 +22,7 @@ class RepoOut(BaseModel):
     github_url: str
     last_synced_at: datetime | None
     dockerize_eligible: bool | None
+    e2e_test_plan_id: int | None
     stages: dict[str, StageCheckOut]
     current_stage: str
     is_stuck: bool

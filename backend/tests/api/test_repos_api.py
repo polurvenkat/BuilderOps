@@ -459,3 +459,24 @@ def test_repo_out_dockerize_eligible_defaults_to_none():
     body = client.get(f"/repos/{repo_id}").json()
 
     assert body["dockerize_eligible"] is None
+
+
+def test_repo_out_exposes_e2e_test_plan_id():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    client.patch(f"/repos/{repo_id}", json={"e2e_test_plan_id": 42})
+    body = client.get(f"/repos/{repo_id}").json()
+
+    assert body["e2e_test_plan_id"] == 42
+
+
+def test_repo_out_e2e_test_plan_id_defaults_to_none():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    body = client.get(f"/repos/{repo_id}").json()
+
+    assert body["e2e_test_plan_id"] is None

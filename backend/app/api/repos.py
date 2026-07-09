@@ -63,6 +63,7 @@ def _to_repo_out(repo: Repo, session: Session) -> RepoOut:
         github_url=repo.github_url,
         last_synced_at=repo.last_synced_at,
         dockerize_eligible=repo.dockerize_eligible,
+        e2e_test_plan_id=repo.e2e_test_plan_id,
         stages=stages,
         current_stage=stage_info.current_stage,
         is_stuck=stage_info.is_stuck,
