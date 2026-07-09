@@ -65,7 +65,7 @@ function InventoryRow({ repo, onUpdated }: { repo: RepoOut; onUpdated: (repo: Re
             aria-label={`New name for ${repo.name}`}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="bg-bg border border-card-border rounded px-1.5 py-0.5 text-[11px] text-chalk w-[150px]"
+            className="bg-bg border border-card-border rounded px-1.5 py-0.5 text-[11px] text-chalk w-[260px]"
           />
           <button
             onClick={handleRename}
