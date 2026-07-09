@@ -47,11 +47,27 @@ describe("StationBoard", () => {
     expect(screen.getByText("piped-repo")).toBeInTheDocument();
   });
 
-  it("still shows Tested and Paved Road as empty with explanatory text", () => {
+  it("groups a tested repo into a real Tested column", () => {
+    renderBoard([makeRepo({ id: 1, name: "tested-repo", current_stage: "tested" })]);
+
+    expect(screen.getByText("tested-repo")).toBeInTheDocument();
+  });
+
+  it("still shows Paved Road as empty with explanatory text", () => {
     renderBoard([makeRepo({ id: 1, current_stage: "standardized" })]);
 
-    expect(screen.getByText(/unlocks once the E2E\/load connector ships/i)).toBeInTheDocument();
     expect(screen.getByText(/unlocks once Piped and Tested both ship/i)).toBeInTheDocument();
+  });
+
+  it("caps the Tested column at 4 cards and links 'Show all N' to the Repos table filtered by stage", () => {
+    const repos = Array.from({ length: 6 }, (_, i) =>
+      makeRepo({ id: i + 1, name: `tested-repo-${i + 1}`, current_stage: "tested" })
+    );
+    renderBoard(repos);
+
+    expect(screen.queryByText("tested-repo-5")).not.toBeInTheDocument();
+    const showAllLink = screen.getByRole("link", { name: /show all 6/i });
+    expect(showAllLink).toHaveAttribute("href", "/repos?stage=tested");
   });
 
   it("caps the Piped column at 4 cards and links 'Show all N' to the Repos table filtered by stage", () => {

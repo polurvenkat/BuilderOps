@@ -8,4 +8,5 @@ export const STAGE_LABELS: Record<string, string> = {
   onboarded: "Onboarded",
   standardized: "Standardized",
   piped: "Piped",
+  tested: "Tested",
 };
