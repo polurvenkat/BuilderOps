@@ -89,7 +89,12 @@ async def fetch_repos(client: httpx.AsyncClient, org: str, token: str) -> list[G
     repo_list = await _fetch_repo_list(client, org, headers)
 
     results: list[GitHubRepoData] = []
-    for batch in _batched(repo_list, 100):
+    # 100-repo aliased batches reliably 502'd from GitHub's own gateway once "languages"
+    # (needed for total_code_bytes) was added to the query -- languages is an expensive
+    # field per repo, and GitHub's edge times out aggregating it across 100 aliases in one
+    # request. Verified directly against the real API: 100 fails consistently, 50 succeeds
+    # consistently (3/3 real attempts). The cheap existence-check fields alone tolerated 100.
+    for batch in _batched(repo_list, 50):
         names = [r["name"] for r in batch]
         resp = await client.post(GRAPHQL_URL, json={"query": _checks_query(names, org)}, headers=headers)
         data = _graphql_data(resp)
