@@ -1,0 +1,53 @@
+name: Deploy to ACA
+
+on:
+  workflow_run:
+    workflows: ["Build and Test"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      frontend_tag:
+        description: "Frontend image tag to deploy (leave blank to recompute the current one)"
+        required: false
+      backend_tag:
+        description: "Backend image tag to deploy (leave blank to recompute the current one)"
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  ensure-infra:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Ensure resource group exists
+        run: az group create --name ${{ vars.AZURE_RESOURCE_GROUP }} --location ${{ vars.AZURE_LOCATION }} >/dev/null
+      - uses: ./.github/actions/ensure-acr
+        with:
+          acr-name: ${{ vars.ACR_NAME }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          location: ${{ vars.AZURE_LOCATION }}
+      - name: Ensure Container Apps Environment exists
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade -y >/dev/null 2>&1 || true
+          az provider register --namespace Microsoft.App --wait
+          az provider register --namespace Microsoft.OperationalInsights --wait
+          if ! az containerapp env show --name ${{ vars.ACA_ENV_NAME }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} >/dev/null 2>&1; then
+            echo "Container Apps Environment '${{ vars.ACA_ENV_NAME }}' not found, creating..."
+            az containerapp env create \
+              --name ${{ vars.ACA_ENV_NAME }} \
+              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+              --location ${{ vars.AZURE_LOCATION }}
+          else
+            echo "Container Apps Environment '${{ vars.ACA_ENV_NAME }}' already exists."
+          fi
