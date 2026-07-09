@@ -24,12 +24,16 @@ REPO_CHECKS_RESPONSE = {
             "codeowners": {"id": "codeowners-1"},
             "dockerfile": {"id": "dockerfile-1"},
             "branchProtectionRules": {"nodes": [{"pattern": "main", "requiredApprovingReviewCount": 2}]},
+            "primaryLanguage": {"name": "TypeScript"},
+            "languages": {"totalSize": 50000},
         },
         "r1": {
             "readme": None,
             "codeowners": None,
             "dockerfile": None,
             "branchProtectionRules": {"nodes": []},
+            "primaryLanguage": None,
+            "languages": {"totalSize": 0},
         },
     }
 }
@@ -59,6 +63,8 @@ async def test_fetch_repos_combines_list_and_checks():
         dockerfile_present=True,
         branch_protection_enabled=True,
         required_reviewer_count=2,
+        primary_language="TypeScript",
+        total_code_bytes=50000,
     )
     assert repos[1] == GitHubRepoData(
         name="payments-api",
@@ -68,6 +74,8 @@ async def test_fetch_repos_combines_list_and_checks():
         dockerfile_present=False,
         branch_protection_enabled=False,
         required_reviewer_count=0,
+        primary_language=None,
+        total_code_bytes=0,
     )
 
 

@@ -14,6 +14,8 @@ class GitHubRepoData:
     dockerfile_present: bool
     branch_protection_enabled: bool
     required_reviewer_count: int
+    primary_language: str | None = None
+    total_code_bytes: int = 0
 
 
 LIST_QUERY = """
@@ -39,6 +41,8 @@ def _checks_query(repo_names: list[str], org: str) -> str:
           branchProtectionRules(first: 10) {{
             nodes {{ pattern requiredApprovingReviewCount }}
           }}
+          primaryLanguage {{ name }}
+          languages {{ totalSize }}
         }}''')
     return "query {" + "".join(aliases) + "\n}"
 
@@ -93,6 +97,8 @@ async def fetch_repos(client: httpx.AsyncClient, org: str, token: str) -> list[G
             check = data[f"r{i}"]
             protection_nodes = (check.get("branchProtectionRules") or {}).get("nodes") or []
             required_reviewers = max((n.get("requiredApprovingReviewCount") or 0) for n in protection_nodes) if protection_nodes else 0
+            primary_language = (check.get("primaryLanguage") or {}).get("name")
+            total_code_bytes = (check.get("languages") or {}).get("totalSize") or 0
             results.append(
                 GitHubRepoData(
                     name=repo["name"],
@@ -102,6 +108,8 @@ async def fetch_repos(client: httpx.AsyncClient, org: str, token: str) -> list[G
                     dockerfile_present=check.get("dockerfile") is not None,
                     branch_protection_enabled=bool(protection_nodes),
                     required_reviewer_count=required_reviewers,
+                    primary_language=primary_language,
+                    total_code_bytes=total_code_bytes,
                 )
             )
     return results

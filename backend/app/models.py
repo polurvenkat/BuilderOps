@@ -21,6 +21,9 @@ class Repo(Base):
     migration_wave: Mapped[str] = mapped_column(String, nullable=False, default="not_started")
     dockerize_eligible: Mapped[bool | None] = mapped_column(nullable=True, default=None)
     e2e_test_plan_id: Mapped[int | None] = mapped_column(nullable=True, default=None)
+    app_count: Mapped[int | None] = mapped_column(nullable=True, default=None)
+    primary_language: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    total_code_bytes: Mapped[int | None] = mapped_column(nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
