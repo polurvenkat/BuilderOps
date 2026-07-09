@@ -10,3 +10,10 @@ export const STAGE_LABELS: Record<string, string> = {
   piped: "Piped",
   tested: "Tested",
 };
+
+export function toKebabCase(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}

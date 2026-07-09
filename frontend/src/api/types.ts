@@ -15,6 +15,9 @@ export interface RepoOut {
   last_synced_at: string | null;
   dockerize_eligible?: boolean | null;
   e2e_test_plan_id?: number | null;
+  app_count?: number | null;
+  primary_language?: string | null;
+  complexity?: "low" | "medium" | "high" | null;
   stages: Record<string, StageCheckOut>;
   current_stage: string;
   is_stuck: boolean;
@@ -35,6 +38,8 @@ export interface RepoPatchIn {
   dockerize_eligible?: boolean;
   e2e_test_plan_id?: number;
   ado_pipeline_id?: number;
+  app_count?: number;
+  new_name?: string;
 }
 
 export interface OnboardingLogIn {
