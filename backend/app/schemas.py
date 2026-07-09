@@ -23,6 +23,9 @@ class RepoOut(BaseModel):
     last_synced_at: datetime | None
     dockerize_eligible: bool | None
     e2e_test_plan_id: int | None
+    app_count: int | None
+    primary_language: str | None
+    complexity: Literal["low", "medium", "high"] | None
     stages: dict[str, StageCheckOut]
     current_stage: str
     is_stuck: bool
@@ -39,6 +42,7 @@ class RepoPatchIn(BaseModel):
     dockerize_eligible: bool | None = None
     e2e_test_plan_id: int | None = None
     ado_pipeline_id: int | None = None
+    app_count: int | None = None
 
 
 class OnboardingLogIn(BaseModel):

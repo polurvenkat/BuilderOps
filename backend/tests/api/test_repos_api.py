@@ -573,3 +573,71 @@ def test_repo_out_e2e_test_plan_id_defaults_to_none():
     body = client.get(f"/repos/{repo_id}").json()
 
     assert body["e2e_test_plan_id"] is None
+
+
+def test_patch_repo_updates_app_count():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    response = client.patch(f"/repos/{repo_id}", json={"app_count": 4})
+
+    assert response.status_code == 200
+    assert response.json()["app_count"] == 4
+    session = app.state.sessionmaker()
+    repo = session.get(Repo, repo_id)
+    assert repo.app_count == 4
+    session.close()
+
+
+def test_list_repos_exposes_primary_language_and_complexity():
+    app = create_app(make_test_settings())
+    session = app.state.sessionmaker()
+    repo = Repo(
+        name="checkout-web", github_url="https://github.com/acme-org/checkout-web",
+        primary_language="TypeScript", total_code_bytes=5000,
+    )
+    session.add(repo)
+    session.commit()
+    session.close()
+
+    client = TestClient(app)
+    body = client.get("/repos").json()
+
+    assert body[0]["primary_language"] == "TypeScript"
+    assert body[0]["complexity"] == "high"  # only repo with a real byte count -> lands in high
+
+
+def test_list_repos_computes_complexity_against_the_full_unfiltered_repo_set():
+    app = create_app(make_test_settings())
+    session = app.state.sessionmaker()
+    session.add_all([
+        Repo(name="small-repo", github_url="https://github.com/acme-org/small-repo", domain="Growth", total_code_bytes=1000),
+        Repo(name="medium-repo", github_url="https://github.com/acme-org/medium-repo", domain="Growth", total_code_bytes=5000),
+        Repo(name="large-repo", github_url="https://github.com/acme-org/large-repo", domain="Payments", total_code_bytes=50000),
+    ])
+    session.commit()
+    session.close()
+
+    client = TestClient(app)
+    # "large-repo" is alone in the Payments domain -- filtering must not make its complexity
+    # look different than it is against the whole org.
+    unfiltered = {r["name"]: r["complexity"] for r in client.get("/repos").json()}
+    filtered = {r["name"]: r["complexity"] for r in client.get("/repos", params={"domain": "Payments"}).json()}
+
+    assert filtered["large-repo"] == unfiltered["large-repo"]
+
+
+def test_get_single_repo_includes_complexity():
+    app = create_app(make_test_settings())
+    session = app.state.sessionmaker()
+    repo = Repo(name="checkout-web", github_url="https://github.com/acme-org/checkout-web", total_code_bytes=5000)
+    session.add(repo)
+    session.commit()
+    repo_id = repo.id
+    session.close()
+
+    client = TestClient(app)
+    body = client.get(f"/repos/{repo_id}").json()
+
+    assert body["complexity"] == "high"

@@ -19,6 +19,7 @@ from app.schemas import (
     RepoPatchIn,
     StageCheckOut,
 )
+from app.services.complexity import compute_complexity_buckets
 from app.services.readiness_store import upsert_readiness_check
 from app.services.stage import CheckStatus, derive_stage_info
 
@@ -30,7 +31,14 @@ def _aware(dt):
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
-def _to_repo_out(repo: Repo, session: Session, checks: list[ReadinessCheck] | None = None) -> RepoOut:
+def _compute_complexity_map(session: Session) -> dict[int, str | None]:
+    byte_counts = dict(session.query(Repo.id, Repo.total_code_bytes).all())
+    return compute_complexity_buckets(byte_counts)
+
+
+def _to_repo_out(
+    repo: Repo, session: Session, checks: list[ReadinessCheck] | None = None, complexity: str | None = None,
+) -> RepoOut:
     if checks is None:
         checks = session.query(ReadinessCheck).filter_by(repo_id=repo.id).all()
     stages = {
@@ -66,6 +74,9 @@ def _to_repo_out(repo: Repo, session: Session, checks: list[ReadinessCheck] | No
         last_synced_at=repo.last_synced_at,
         dockerize_eligible=repo.dockerize_eligible,
         e2e_test_plan_id=repo.e2e_test_plan_id,
+        app_count=repo.app_count,
+        primary_language=repo.primary_language,
+        complexity=complexity,
         stages=stages,
         current_stage=stage_info.current_stage,
         is_stuck=stage_info.is_stuck,
@@ -81,6 +92,8 @@ def list_repos(
     sort: str | None = None,
     session: Session = Depends(get_db),
 ):
+    complexity_map = _compute_complexity_map(session)
+
     query = session.query(Repo)
     if domain is not None:
         query = query.filter(Repo.domain == domain)
@@ -94,7 +107,10 @@ def list_repos(
         for check in session.query(ReadinessCheck).filter(ReadinessCheck.repo_id.in_(repo_ids)).all():
             checks_by_repo_id[check.repo_id].append(check)
 
-    repos = [_to_repo_out(r, session, checks_by_repo_id.get(r.id, [])) for r in repo_rows]
+    repos = [
+        _to_repo_out(r, session, checks_by_repo_id.get(r.id, []), complexity_map.get(r.id))
+        for r in repo_rows
+    ]
 
     if stage is not None:
         repos = [r for r in repos if r.current_stage == stage]
@@ -110,7 +126,8 @@ def get_repo(repo_id: int, session: Session = Depends(get_db)):
     repo = session.get(Repo, repo_id)
     if repo is None:
         raise HTTPException(status_code=404, detail="Repo not found")
-    return _to_repo_out(repo, session)
+    complexity_map = _compute_complexity_map(session)
+    return _to_repo_out(repo, session, complexity=complexity_map.get(repo_id))
 
 
 @router.patch("/{repo_id}", response_model=RepoOut)
@@ -137,6 +154,8 @@ async def patch_repo(repo_id: int, body: RepoPatchIn, request: Request, session:
         repo.dockerize_eligible = body.dockerize_eligible
     if body.e2e_test_plan_id is not None:
         repo.e2e_test_plan_id = body.e2e_test_plan_id
+    if body.app_count is not None:
+        repo.app_count = body.app_count
     if body.ado_pipeline_id is not None:
         settings = request.app.state.settings
         try:
@@ -167,7 +186,8 @@ async def patch_repo(repo_id: int, body: RepoPatchIn, request: Request, session:
             source="manual", detail=None, updated_at=now,
         ))
     session.commit()
-    return _to_repo_out(repo, session)
+    complexity_map = _compute_complexity_map(session)
+    return _to_repo_out(repo, session, complexity=complexity_map.get(repo_id))
 
 
 @router.post("/{repo_id}/onboarding-log", response_model=OnboardingLogOut, status_code=201)
