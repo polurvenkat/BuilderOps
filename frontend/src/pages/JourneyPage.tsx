@@ -21,7 +21,7 @@ const PIPED_CHECK_LABELS: Record<string, string> = {
   deployed_aca: "Deployed to ACA",
 };
 const PIPED_BLOCKING_KEYS = ["pipeline_linked", "pipeline_is_yaml", "environment_gates_configured", "dockerized"];
-const DEPLOY_STAGE_NAMES = ["DEV", "QA", "UAT", "Prod"];
+const DEPLOY_STAGE_NAMES = ["dev", "qa", "uat", "prod"];
 
 function fractionPassing(stages: Record<string, { status: string }>, keys: string[]): number {
   if (keys.length === 0) return 0;
@@ -57,7 +57,9 @@ function pipedChecks(repo: RepoOut) {
 
 function pipelineProgressFraction(stages: PipelineStageStatusOut[] | null): number {
   if (!stages) return 0;
-  const relevant = stages.filter((s) => DEPLOY_STAGE_NAMES.includes(s.name));
+  const relevant = stages.filter((s) =>
+    DEPLOY_STAGE_NAMES.some((name) => s.name.toLowerCase().includes(name))
+  );
   if (relevant.length === 0) return 0;
   return relevant.filter((s) => s.status === "succeeded").length / relevant.length;
 }

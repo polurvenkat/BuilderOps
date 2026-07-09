@@ -78,7 +78,7 @@ describe("JourneyPage", () => {
     expect(screen.getByText(/No CODEOWNERS assigned/)).toBeInTheDocument();
   });
 
-  it("always renders Piped/Tested/Paved Road as Locked regardless of data", async () => {
+  it("renders Tested/Paved Road as Locked, and Piped as Locked when the repo has no pipeline link", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ ok: true, json: async () => STUCK_REPO })
@@ -196,5 +196,39 @@ describe("JourneyPage", () => {
     expect(within(pipedCard).getByText("Cleared")).toBeInTheDocument();
 
     await waitFor(() => expect(screen.getByText(/Needs sign-off/)).toBeInTheDocument());
+  });
+
+  it("counts pipeline stages toward progress via case-insensitive substring matching, not just exact names", async () => {
+    const clearedRepo: RepoOut = {
+      ...PIPED_REPO,
+      stages: { ...PIPED_REPO.stages, dockerized: { status: "pass", source: "auto", detail: null, updated_at: "2026-07-01T00:00:00Z" } },
+      current_stage: "tested",
+      is_stuck: false,
+      stuck_reason: null,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => clearedRepo })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [], median_hours: null }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          stages: [
+            { name: "Deploy to Dev", status: "succeeded", pending_approval_description: null },
+            { name: "QA Environment", status: "succeeded", pending_approval_description: null },
+            { name: "uat sign-off", status: "succeeded", pending_approval_description: null },
+            { name: "Production", status: "succeeded", pending_approval_description: null },
+          ],
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = renderAtRepo("2");
+
+    await waitFor(() => expect(screen.getByText("checkout-web-piped")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Deploy to Dev")).toBeInTheDocument());
+
+    const pipelineLine = container.querySelector('[data-line="pipeline"]');
+    expect(pipelineLine).toHaveAttribute("stroke-dasharray", "100 100");
   });
 });
