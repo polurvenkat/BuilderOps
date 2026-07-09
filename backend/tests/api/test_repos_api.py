@@ -438,3 +438,24 @@ def test_patch_repo_updates_e2e_test_plan_id():
     repo = session.get(Repo, repo_id)
     assert repo.e2e_test_plan_id == 42
     session.close()
+
+
+def test_repo_out_exposes_dockerize_eligible():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    client.patch(f"/repos/{repo_id}", json={"dockerize_eligible": True})
+    body = client.get(f"/repos/{repo_id}").json()
+
+    assert body["dockerize_eligible"] is True
+
+
+def test_repo_out_dockerize_eligible_defaults_to_none():
+    app = create_app(make_test_settings())
+    repo_id = seed_repo(app)
+    client = TestClient(app)
+
+    body = client.get(f"/repos/{repo_id}").json()
+
+    assert body["dockerize_eligible"] is None

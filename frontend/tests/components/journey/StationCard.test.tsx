@@ -55,4 +55,47 @@ describe("StationCard", () => {
 
     expect(button).toHaveAttribute("aria-expanded", "true");
   });
+
+  it("renders a checklist of multiple sub-checks when the checks prop is provided", async () => {
+    const user = userEvent.setup();
+    render(
+      <StationCard
+        code="PI-01"
+        title="Piped"
+        description="Azure Pipelines is wired up."
+        badge="You are here"
+        trackColor="#3FBBA0"
+        checks={[
+          { label: "Pipeline linked", check: { status: "pass", source: "auto", detail: null, updated_at: null } },
+          { label: "Dockerized", check: { status: "fail", source: "auto", detail: null, updated_at: null } },
+        ]}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /details/i }));
+
+    expect(screen.getByText("Pipeline linked")).toBeInTheDocument();
+    expect(screen.getByText("pass")).toBeInTheDocument();
+    expect(screen.getByText("Dockerized")).toBeInTheDocument();
+    expect(screen.getByText("fail")).toBeInTheDocument();
+  });
+
+  it("renders 'unknown' for a checklist entry with no check data yet", async () => {
+    const user = userEvent.setup();
+    render(
+      <StationCard
+        code="PI-01"
+        title="Piped"
+        description="Azure Pipelines is wired up."
+        badge="You are here"
+        trackColor="#3FBBA0"
+        checks={[{ label: "Deployed to ACA" }]}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /details/i }));
+
+    expect(screen.getByText("Deployed to ACA")).toBeInTheDocument();
+    expect(screen.getByText("unknown")).toBeInTheDocument();
+  });
 });

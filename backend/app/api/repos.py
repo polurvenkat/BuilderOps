@@ -62,6 +62,7 @@ def _to_repo_out(repo: Repo, session: Session) -> RepoOut:
         migration_wave=repo.migration_wave,
         github_url=repo.github_url,
         last_synced_at=repo.last_synced_at,
+        dockerize_eligible=repo.dockerize_eligible,
         stages=stages,
         current_stage=stage_info.current_stage,
         is_stuck=stage_info.is_stuck,

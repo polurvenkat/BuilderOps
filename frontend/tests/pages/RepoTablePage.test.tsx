@@ -169,4 +169,15 @@ describe("RepoTablePage", () => {
     expect(text).toContain("checkout-web");
     expect(text.split("\n")[0]).toContain("Name");
   });
+
+  it("renders a column header for each Piped-card check", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [makeRepo({})] }));
+
+    renderTable();
+
+    await waitFor(() => expect(screen.getByText("repo")).toBeInTheDocument());
+    ["pipe", "envi", "dock", "depl"].forEach((prefix) => {
+      expect(screen.getAllByTitle(new RegExp(`^${prefix}`)).length).toBeGreaterThan(0);
+    });
+  });
 });

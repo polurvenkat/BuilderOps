@@ -13,6 +13,7 @@ export interface RepoOut {
   migration_wave: string;
   github_url: string;
   last_synced_at: string | null;
+  dockerize_eligible?: boolean | null;
   stages: Record<string, StageCheckOut>;
   current_stage: string;
   is_stuck: boolean;
@@ -30,6 +31,7 @@ export interface RepoPatchIn {
   domain?: string;
   team?: string;
   migration_wave?: "not_started" | "pilot" | "rolling_out" | "migrated";
+  dockerize_eligible?: boolean;
 }
 
 export interface OnboardingLogIn {
@@ -48,4 +50,14 @@ export interface OnboardingLogOut {
 export interface OnboardingSummaryOut {
   entries: OnboardingLogOut[];
   median_hours: number | null;
+}
+
+export interface PipelineStageStatusOut {
+  name: string;
+  status: string;
+  pending_approval_description: string | null;
+}
+
+export interface PipelineStatusOut {
+  stages: PipelineStageStatusOut[];
 }

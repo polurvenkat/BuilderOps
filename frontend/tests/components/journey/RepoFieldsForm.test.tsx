@@ -17,6 +17,7 @@ const REPO: RepoOut = {
   is_stuck: false,
   dwell_days: null,
   stuck_reason: null,
+  dockerize_eligible: null,
 };
 
 afterEach(() => {
@@ -58,5 +59,44 @@ describe("RepoFieldsForm", () => {
 
     await waitFor(() => expect(screen.getByText(/422/)).toBeInTheDocument());
     expect(screen.getByLabelText(/domain/i)).toHaveValue("Checkout");
+  });
+
+  it("pre-fills the dockerize-eligible select from the repo's current value", () => {
+    render(<RepoFieldsForm repo={{ ...REPO, dockerize_eligible: true }} onUpdated={vi.fn()} />);
+
+    expect(screen.getByLabelText(/dockerize eligible/i)).toHaveValue("true");
+  });
+
+  it("defaults the dockerize-eligible select to 'not yet assessed' when the repo has no value", () => {
+    render(<RepoFieldsForm repo={REPO} onUpdated={vi.fn()} />);
+
+    expect(screen.getByLabelText(/dockerize eligible/i)).toHaveValue("unset");
+  });
+
+  it("submits dockerize_eligible as a real boolean when changed from unset", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ...REPO, dockerize_eligible: true }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<RepoFieldsForm repo={REPO} onUpdated={vi.fn()} />);
+    await user.selectOptions(screen.getByLabelText(/dockerize eligible/i), "true");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, options] = fetchMock.mock.calls[0];
+    expect(JSON.parse(options.body)).toMatchObject({ dockerize_eligible: true });
+  });
+
+  it("omits dockerize_eligible from the PATCH body when left at not-yet-assessed", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => REPO });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<RepoFieldsForm repo={REPO} onUpdated={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, options] = fetchMock.mock.calls[0];
+    expect(JSON.parse(options.body)).not.toHaveProperty("dockerize_eligible");
   });
 });

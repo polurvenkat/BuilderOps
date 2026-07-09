@@ -41,12 +41,28 @@ describe("StationBoard", () => {
     expect(screen.getByText("standardized-repo")).toBeInTheDocument();
   });
 
-  it("always shows Piped/Tested/Paved Road as empty with explanatory text", () => {
+  it("groups a piped repo into a real Piped column", () => {
+    renderBoard([makeRepo({ id: 1, name: "piped-repo", current_stage: "piped" })]);
+
+    expect(screen.getByText("piped-repo")).toBeInTheDocument();
+  });
+
+  it("still shows Tested and Paved Road as empty with explanatory text", () => {
     renderBoard([makeRepo({ id: 1, current_stage: "standardized" })]);
 
-    expect(screen.getByText(/unlocks once the CI\/CD connector ships/i)).toBeInTheDocument();
     expect(screen.getByText(/unlocks once the E2E\/load connector ships/i)).toBeInTheDocument();
     expect(screen.getByText(/unlocks once Piped and Tested both ship/i)).toBeInTheDocument();
+  });
+
+  it("caps the Piped column at 4 cards and links 'Show all N' to the Repos table filtered by stage", () => {
+    const repos = Array.from({ length: 6 }, (_, i) =>
+      makeRepo({ id: i + 1, name: `piped-repo-${i + 1}`, current_stage: "piped" })
+    );
+    renderBoard(repos);
+
+    expect(screen.queryByText("piped-repo-5")).not.toBeInTheDocument();
+    const showAllLink = screen.getByRole("link", { name: /show all 6/i });
+    expect(showAllLink).toHaveAttribute("href", "/repos?stage=piped");
   });
 
   it("shows a stuck flag with the plain-language reason on a stuck repo's card", () => {
