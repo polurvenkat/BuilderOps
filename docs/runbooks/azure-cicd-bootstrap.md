@@ -1,12 +1,39 @@
 # Azure CI/CD Bootstrap Runbook
 
 One-time manual setup for `build-and-test.yml` and `deploy.yml`. Run these
-`az` commands yourself (needs Azure AD admin rights the workflows don't have);
-everything after this is automated.
+`az` commands yourself (needs Azure AD / Entra ID admin rights the workflows
+don't have); everything after this is automated by the pipeline itself —
+`deploy.yml`'s `ensure-infra` job creates the resource group, registry, and
+Container Apps Environment on its own first real run. Don't pre-create them
+by hand; the whole point of the check-then-create logic is that the
+pipeline is the one source of truth for provisioning.
+
+## Current deployment target (BuilderOps / Innovation Sandbox)
+
+| | |
+|---|---|
+| Azure subscription | `Innovation Sandbox` — `48e3acd2-a4f7-4c11-a2fb-934d6149f545` |
+| Azure AD tenant | `ea4d58b6-6980-4312-be9a-ab68edfa574c` (arrivia.com) |
+| GitHub repo | `polurvenkat/BuilderOps` |
+| Resource group | `rg-builderops-wus3` |
+| Location | `westus3` |
+| ACR | `builderopsacrwus3` |
+| Container Apps Environment | `cae-builderops-wus3` |
+| Backend Container App | `builderops-backend-wus3` |
+| Frontend Container App | `builderops-frontend-wus3` |
+
+This subscription enforces a policy requiring `env`, `business`, `iac`,
+`createdby`, and `availability` tags on every resource group — that's why
+`ensure-infra` passes `--tags ${{ vars.AZURE_RG_TAGS }}` when creating one
+(see the variables table below). If you deploy this to a subscription
+without that policy, just leave `AZURE_RG_TAGS` unset.
 
 ## 1. Create the Azure AD App Registration and federated credential
 
-Replace `<org>/<repo>` with this repository's `owner/name`.
+This step needs Entra ID directory permissions (e.g. Application
+Administrator or Global Administrator) — plain subscription Contributor/Owner
+is not enough, and `az ad app create` / `az ad sp create-for-rbac` will both
+fail with "Insufficient privileges" without it.
 
 ```bash
 APP_ID=$(az ad app create --display-name "builderops-gh-actions" --query appId -o tsv)
@@ -17,51 +44,67 @@ az ad app federated-credential create \
   --parameters '{
     "name": "builderops-main-branch",
     "issuer": "https://token.actions.githubusercontent.com",
-    "subject": "repo:<org>/<repo>:ref:refs/heads/main",
+    "subject": "repo:polurvenkat/BuilderOps:ref:refs/heads/main",
     "audiences": ["api://AzureADTokenExchange"]
   }'
 ```
 
-Grant the service principal `Contributor` on the target subscription or
-resource group (whichever scope you want CI to manage):
+Grant the service principal rights on the target resource group. `deploy.yml`
+does more than manage resources — it also runs `az role assignment create`
+to grant each Container App's managed identity `AcrPull` on the registry, so
+plain `Contributor` is **not enough** (Contributor explicitly excludes
+`Microsoft.Authorization/roleAssignments/write`). Grant both `Contributor`
+and `User Access Administrator` scoped to just the resource group (avoid
+`Owner` at subscription scope — this keeps the CI identity's blast radius
+limited to the one resource group it manages):
 
 ```bash
-az role assignment create \
-  --assignee "$APP_ID" \
-  --role "Contributor" \
-  --scope "/subscriptions/<subscription-id>/resourceGroups/<resource-group>"
+for ROLE in Contributor "User Access Administrator"; do
+  az role assignment create \
+    --assignee "$APP_ID" \
+    --role "$ROLE" \
+    --scope "/subscriptions/48e3acd2-a4f7-4c11-a2fb-934d6149f545/resourceGroups/rg-builderops-wus3"
+done
 ```
+
+Note: the resource group itself must exist before this role assignment can
+be scoped to it. If it doesn't exist yet, create it first with the same
+tags `ensure-infra` would use (see `AZURE_RG_TAGS` below) — `deploy.yml`'s
+own `az group create` call is safe to run again afterwards, it's a no-op
+against an existing group.
 
 ## 2. GitHub repo secrets (`Settings -> Secrets and variables -> Actions -> Secrets`)
 
 | Secret | Value |
 |---|---|
 | `AZURE_CLIENT_ID` | `$APP_ID` from step 1 |
-| `AZURE_TENANT_ID` | `az account show --query tenantId -o tsv` |
-| `AZURE_SUBSCRIPTION_ID` | `az account show --query id -o tsv` |
+| `AZURE_TENANT_ID` | `ea4d58b6-6980-4312-be9a-ab68edfa574c` |
+| `AZURE_SUBSCRIPTION_ID` | `48e3acd2-a4f7-4c11-a2fb-934d6149f545` |
+| `DATABASE_URL` | The backend's Postgres connection string (from `backend/.env`, gitignored — never commit it) |
+| `GITHUB_TOKEN` | The backend's GitHub PAT (from `backend/.env`) |
+| `ADO_PAT` | The backend's Azure DevOps PAT (from `backend/.env`) |
+
+These three app secrets are passed to the backend Container App as native
+Container App secrets (`--secrets` / `secretref:`), not via Key Vault — this
+deployment has no Key Vault provisioned, and `backend/app/config.py` already
+falls back to reading them straight from the environment when
+`AZURE_KEY_VAULT_URL` isn't set.
 
 ## 3. GitHub repo variables (`Settings -> Secrets and variables -> Actions -> Variables`)
 
-| Variable | Example | Notes |
-|---|---|---|
-| `AZURE_RESOURCE_GROUP` | `builderops-rg` | Created automatically if missing |
-| `AZURE_LOCATION` | `eastus` | Used for ACR, ACA environment, and both apps |
-| `ACR_NAME` | `builderopsacr` | Must be globally unique across Azure |
-| `ACA_ENV_NAME` | `builderops-env` | Container Apps Environment name |
-| `ACA_FRONTEND_APP` | `builderops-frontend` | Container App name |
-| `ACA_BACKEND_APP` | `builderops-backend` | Container App name |
-| `AZURE_KEY_VAULT_URL` | `https://builderops-kv.vault.azure.net/` | Passed to the backend as `AZURE_KEY_VAULT_URL` |
-| `AZURE_KEY_VAULT_NAME` | `builderops-kv` | Used for the `az keyvault set-policy` call, not passed to the app |
-| `GITHUB_ORG` | `arriviainc-softeng` | Passed through to the backend, non-secret |
-| `ADO_ORG` | `arrivia` | Passed through to the backend, non-secret |
-| `ADO_PROJECT` | `SoftEng` | Passed through to the backend, non-secret |
-| `VITE_API_BASE_URL` | *(blank until step 4)* | Baked into the frontend build |
-
-The Key Vault referenced above must already contain the secrets
-`builderops-database-url`, `builderops-github-token`, and `builderops-ado-pat`
-(see `backend/app/config.py`'s `_ENV_TO_KEY_VAULT_NAME` mapping) — this
-runbook only wires the backend's managed identity to read them, it does not
-create the Key Vault or populate its secrets.
+| Variable | Value |
+|---|---|
+| `AZURE_RESOURCE_GROUP` | `rg-builderops-wus3` |
+| `AZURE_LOCATION` | `westus3` |
+| `AZURE_RG_TAGS` | `env=dev business=us iac=github-actions createdby=venkat.polur availability=24/7` |
+| `ACR_NAME` | `builderopsacrwus3` |
+| `ACA_ENV_NAME` | `cae-builderops-wus3` |
+| `ACA_FRONTEND_APP` | `builderops-frontend-wus3` |
+| `ACA_BACKEND_APP` | `builderops-backend-wus3` |
+| `GITHUB_ORG` | `arriviainc-softeng` |
+| `ADO_ORG` | `arrivia` |
+| `ADO_PROJECT` | `SoftEng` |
+| `VITE_API_BASE_URL` | *(blank until step 4)* |
 
 ## 4. First-ever deploy sequence
 

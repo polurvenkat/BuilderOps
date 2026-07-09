@@ -30,7 +30,13 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Ensure resource group exists
-        run: az group create --name ${{ vars.AZURE_RESOURCE_GROUP }} --location ${{ vars.AZURE_LOCATION }} >/dev/null
+        run: |
+          set -euo pipefail
+          if [ -n "${{ vars.AZURE_RG_TAGS }}" ]; then
+            az group create --name ${{ vars.AZURE_RESOURCE_GROUP }} --location ${{ vars.AZURE_LOCATION }} --tags ${{ vars.AZURE_RG_TAGS }} >/dev/null
+          else
+            az group create --name ${{ vars.AZURE_RESOURCE_GROUP }} --location ${{ vars.AZURE_LOCATION }} >/dev/null
+          fi
       - uses: ./.github/actions/ensure-acr
         with:
           acr-name: ${{ vars.ACR_NAME }}
@@ -101,12 +107,9 @@ jobs:
               --system-assigned \
               --registry-server "${{ steps.acr.outputs.login-server }}" \
               --registry-identity system \
-              --env-vars AZURE_KEY_VAULT_URL=${{ vars.AZURE_KEY_VAULT_URL }} GITHUB_ORG=${{ vars.GITHUB_ORG }} ADO_ORG=${{ vars.ADO_ORG }} ADO_PROJECT=${{ vars.ADO_PROJECT }}
+              --secrets database-url=${{ secrets.DATABASE_URL }} github-token=${{ secrets.GITHUB_TOKEN }} ado-pat=${{ secrets.ADO_PAT }} \
+              --env-vars DATABASE_URL=secretref:database-url GITHUB_TOKEN=secretref:github-token ADO_PAT=secretref:ado-pat GITHUB_ORG=${{ vars.GITHUB_ORG }} ADO_ORG=${{ vars.ADO_ORG }} ADO_PROJECT=${{ vars.ADO_PROJECT }}
             PRINCIPAL_ID=$(az containerapp show --name ${{ vars.ACA_BACKEND_APP }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query identity.principalId -o tsv)
-            az keyvault set-policy \
-              --name ${{ vars.AZURE_KEY_VAULT_NAME }} \
-              --object-id "$PRINCIPAL_ID" \
-              --secret-permissions get list
             ACR_ID=$(az acr show --name ${{ vars.ACR_NAME }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query id -o tsv)
             az role assignment create --assignee "$PRINCIPAL_ID" --role AcrPull --scope "$ACR_ID"
           fi
