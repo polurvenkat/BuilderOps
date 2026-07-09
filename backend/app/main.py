@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -22,6 +23,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     settings = settings or get_settings()
     app = FastAPI(title="BuilderOps API")
+
+    # No auth/cookies are sent by the frontend (plain fetch, no credentials) -- Phase 0 is
+    # BuilderOps-internal only, so a wildcard origin is safe and avoids hardcoding the dev
+    # server's port.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     engine = get_engine(settings.database_url)
     Base.metadata.create_all(engine)

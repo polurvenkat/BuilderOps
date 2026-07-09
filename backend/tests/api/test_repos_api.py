@@ -97,6 +97,18 @@ def test_get_single_repo_404_when_missing():
     assert response.status_code == 404
 
 
+def test_cross_origin_request_is_allowed():
+    """The frontend dev server runs on a different origin/port than the backend -- without
+    CORS enabled, every browser fetch from it is silently blocked."""
+    app = create_app(make_test_settings())
+    client = TestClient(app)
+
+    response = client.get("/repos", headers={"Origin": "http://localhost:5180"})
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"
+
+
 def test_patch_repo_updates_manual_fields_only():
     app = create_app(make_test_settings())
     repo_id = seed_repo(app)
