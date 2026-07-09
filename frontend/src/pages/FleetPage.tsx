@@ -1,13 +1,25 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRepos } from "../hooks/useRepos";
 import { StatStrip } from "../components/fleet/StatStrip";
 import { Legend } from "../components/fleet/Legend";
 import { StuckPanel } from "../components/fleet/StuckPanel";
 import { StationBoard } from "../components/fleet/StationBoard";
+import { InventoryTable } from "../components/fleet/InventoryTable";
+import type { RepoOut } from "../api/types";
 
 export function FleetPage() {
-  const { repos, loading, error } = useRepos();
+  const { repos: fetchedRepos, loading, error } = useRepos();
+  const [repos, setRepos] = useState<RepoOut[]>([]);
   const [stuckExpanded, setStuckExpanded] = useState(false);
+  const [view, setView] = useState<"board" | "inventory">("board");
+
+  useEffect(() => {
+    setRepos(fetchedRepos);
+  }, [fetchedRepos]);
+
+  function handleRepoUpdated(updated: RepoOut) {
+    setRepos((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+  }
 
   if (loading) {
     return (
@@ -35,10 +47,39 @@ export function FleetPage() {
         Where every repo sits right now, and what's stuck. Click any repo for its full journey.
       </p>
 
-      <StatStrip repos={repos} onToggleStuck={() => setStuckExpanded((prev) => !prev)} stuckExpanded={stuckExpanded} />
-      <Legend />
-      <StuckPanel repos={repos} expanded={stuckExpanded} />
-      <StationBoard repos={repos} />
+      <div className="flex gap-1 border-b border-card-border mb-6" role="tablist">
+        <button
+          role="tab"
+          aria-selected={view === "board"}
+          onClick={() => setView("board")}
+          className={`px-4 py-2 text-[12px] border-b-2 -mb-px ${
+            view === "board" ? "border-gold text-gold" : "border-transparent text-chalk-dim"
+          }`}
+        >
+          Board
+        </button>
+        <button
+          role="tab"
+          aria-selected={view === "inventory"}
+          onClick={() => setView("inventory")}
+          className={`px-4 py-2 text-[12px] border-b-2 -mb-px ${
+            view === "inventory" ? "border-gold text-gold" : "border-transparent text-chalk-dim"
+          }`}
+        >
+          Inventory
+        </button>
+      </div>
+
+      {view === "board" ? (
+        <>
+          <StatStrip repos={repos} onToggleStuck={() => setStuckExpanded((prev) => !prev)} stuckExpanded={stuckExpanded} />
+          <Legend />
+          <StuckPanel repos={repos} expanded={stuckExpanded} />
+          <StationBoard repos={repos} />
+        </>
+      ) : (
+        <InventoryTable repos={repos} onUpdated={handleRepoUpdated} />
+      )}
     </div>
   );
 }

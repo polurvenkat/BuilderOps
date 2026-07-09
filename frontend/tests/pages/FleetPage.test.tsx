@@ -136,4 +136,42 @@ describe("FleetPage", () => {
     await waitFor(() => expect(screen.getByTestId("journey-page")).toBeInTheDocument());
     expect(screen.getByText("checkout-web")).toBeInTheDocument();
   });
+
+  it("shows Board content by default and switches to Inventory on tab click", async () => {
+    const user = userEvent.setup();
+    const repos: RepoOut[] = [
+      {
+        id: 1,
+        name: "checkout-web",
+        domain: "Growth",
+        team: "Growth",
+        migration_wave: "not_started",
+        github_url: "https://github.com/acme/checkout-web",
+        last_synced_at: null,
+        stages: {},
+        current_stage: "standardized",
+        is_stuck: false,
+        dwell_days: null,
+        stuck_reason: null,
+        app_count: 2,
+        primary_language: "TypeScript",
+        complexity: "medium",
+      },
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => repos }));
+
+    render(
+      <MemoryRouter>
+        <FleetPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("Repo fleet")).toBeInTheDocument());
+    expect(screen.getByText("CI/CD & environments")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /inventory/i }));
+
+    expect(screen.queryByText("CI/CD & environments")).not.toBeInTheDocument();
+    expect(screen.getByText("TypeScript")).toBeInTheDocument();
+  });
 });
